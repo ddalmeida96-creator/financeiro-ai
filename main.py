@@ -7,7 +7,8 @@ from database import init_db
 from bot import handle_message, ultimos, apagar
 from dashboard import app
 
-load_dotenv()
+if os.path.exists(".env"):
+    load_dotenv()
 init_db()
 
 
