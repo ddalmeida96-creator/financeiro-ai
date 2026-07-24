@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+sqlalchemy
+python-telegram-bot
+python-dotenv
+jinja2

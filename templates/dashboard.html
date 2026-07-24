@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Financeiro do Casal</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <div class="wrap">
+    <h1>💜 Financeiro do Casal</h1>
+    <p class="sub">Resumo do mês atual</p>
+
+    <div class="cards">
+      <div class="card">
+        <span class="label">Receitas</span>
+        <span class="value green">{{ receitas }}</span>
+      </div>
+      <div class="card">
+        <span class="label">Despesas</span>
+        <span class="value red">{{ despesas }}</span>
+      </div>
+      <div class="card">
+        <span class="label">Saldo</span>
+        <span class="value {{ 'green' if saldo_positivo else 'red' }}">{{ saldo }}</span>
+      </div>
+    </div>
+
+    <h2>Por pessoa</h2>
+    <div class="cards">
+      {% for user, v in por_usuario.items() %}
+      <div class="card">
+        <span class="label">{{ user }}</span>
+        <span class="value green small">{{ v.Receita }}</span>
+        <span class="value red small">{{ v.Despesa }}</span>
+      </div>
+      {% else %}
+      <div class="card"><span class="label">Sem lançamentos ainda</span></div>
+      {% endfor %}
+    </div>
+
+    <div class="charts">
+      <div class="panel"><h2>Despesas por categoria</h2><canvas id="catChart"></canvas></div>
+      <div class="panel"><h2>Mensal</h2><canvas id="mesChart"></canvas></div>
+    </div>
+
+    <h2>Últimos lançamentos</h2>
+    <div class="panel">
+      <table>
+        <thead><tr><th>Data</th><th>Pessoa</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead>
+        <tbody>
+          {% for l in ultimos %}
+          <tr>
+            <td>{{ l.data.strftime('%d/%m') }}</td>
+            <td>{{ l.usuario }}</td>
+            <td>{{ l.descricao }}</td>
+            <td>{{ l.categoria }} / {{ l.subcategoria }}</td>
+            <td class="{{ 'green' if l.tipo == 'Receita' else 'red' }}">{{ brl(l.valor) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="muted">Nenhum lançamento.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const green = "#00d17a", red = "#ff5c5c", grid = "#2a2a2e", txt = "#a1a1aa";
+    Chart.defaults.color = txt; Chart.defaults.borderColor = grid;
+
+    new Chart(document.getElementById("catChart"), {
+      type: "doughnut",
+      data: {
+        labels: {{ cat_labels|tojson }},
+        datasets: [{ data: {{ cat_values|tojson }},
+          backgroundColor: ["#a855f7","#00d17a","#ff5c5c","#38bdf8","#fbbf24","#f472b6","#94a3b8"] }]
+      },
+      options: { plugins: { legend: { position: "bottom" } } }
+    });
+
+    new Chart(document.getElementById("mesChart"), {
+      type: "bar",
+      data: {
+        labels: {{ labels_m|tojson }},
+        datasets: [
+          { label: "Receitas", data: {{ rec_m|tojson }}, backgroundColor: green },
+          { label: "Despesas", data: {{ desp_m|tojson }}, backgroundColor: red }
+        ]
+      },
+      options: { scales: { y: { beginAtZero: true } } }
+    });
+  </script>
+</body>
+</html>
