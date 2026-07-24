@@ -33,6 +33,7 @@ function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.remove(
 // ===== Navegação =====
 const TITLES = {
   inicio:["Início","Visão geral do mês"], lancamentos:["Lançamentos","Gerencie seus registros"],
+  fixas:["Fixas","Contas e receitas fixas do mês"],
   historico:["Histórico","Todos os lançamentos"], graficos:["Gráficos","Análise visual do casal"],
   categorias:["Categorias","Classificação automática do bot"]
 };
@@ -44,6 +45,7 @@ function go(view){
   $("#page-sub").textContent=TITLES[view][1];
   if(view==="graficos") loadCharts();
   if(view==="categorias") loadCats();
+  if(view==="fixas") loadFixas();
   if(view==="historico") loadTable("h");
   if(view==="lancamentos") loadTable("l");
 }
@@ -99,7 +101,9 @@ async function loadMeta(){
   const cOpts = '<option value="">Categoria · todas</option>'+META.categorias.map(c=>`<option>${c}</option>`).join("");
   $("#l-usuario").innerHTML=uOpts; $("#h-usuario").innerHTML=uOpts;
   $("#l-categoria").innerHTML=cOpts; $("#h-categoria").innerHTML=cOpts;
-  $("#f-usuario").innerHTML = (META.usuarios.length?META.usuarios:["—"]).map(u=>`<option value="${u}">${dispName(u)}</option>`).join("");
+  const uSel = (META.usuarios.length?META.usuarios:["—"]).map(u=>`<option value="${u}">${dispName(u)}</option>`).join("");
+  $("#f-usuario").innerHTML = uSel;
+  if($("#fx-usuario")) $("#fx-usuario").innerHTML = uSel;
 }
 
 // ===== Tabelas =====
@@ -199,6 +203,7 @@ window.askDelete=(id,desc)=>{ delId=id; delCb=refreshAll; $("#confirm-txt").inne
 $("#confirm-no").onclick=()=>$("#confirm").classList.add("hidden");
 $("#confirm-yes").onclick=async()=>{
   if(delMode==="cat"){ await fetch(delUrl,{method:"DELETE"}); $("#confirm").classList.add("hidden"); toast("Removido"); loadCats(); delMode=null; return; }
+  if(delMode==="fixa"){ await fetch(`/api/fixas/${delId}`,{method:"DELETE"}); $("#confirm").classList.add("hidden"); toast("Fixa removida"); loadFixas(); delMode=null; return; }
   await fetch(`/api/lancamentos/${delId}`,{method:"DELETE"});
   $("#confirm").classList.add("hidden"); toast("Lançamento excluído"); (delCb||refreshAll)();
 };
@@ -243,6 +248,75 @@ $("#cmodal-save").onclick=async()=>{
   else toast("Palavra-chave inválida");
 };
 window.delCat=(kind,kw)=>{ delMode="cat"; delUrl=`/api/categorias/${kind}/${kw}`; $("#confirm-txt").innerHTML=`Remover a palavra-chave <b>“${decodeURIComponent(kw)}”</b>?`; $("#confirm").classList.remove("hidden"); };
+
+// ===== Fixas =====
+function fxRow(i){
+  const rec = i.tipo==="Receita";
+  const cls = i.pago ? (rec?"rec":"ok") : "pend";
+  const txt = i.pago ? (rec?"Recebida":"Paga") : (rec?"A receber":"Pendente");
+  const action = i.pago
+    ? `<button class="btn-soft sm" onclick="fxDesfazer(${i.id})">Desfazer</button>`
+    : `<button class="btn-primary sm" onclick="fxPagar(${i.id})">${rec?"Recebi":"Paguei"}</button>`;
+  const quem = (i.usuario && i.usuario!=="—") ? " · "+dispName(i.usuario) : "";
+  return `<div class="fx-row ${i.pago?'done':''}">
+    <div class="fx-day">dia ${i.dia}</div>
+    <div class="fx-main"><div class="fx-desc">${i.descricao}</div>
+      <div class="fx-meta">${i.categoria} · ${i.subcategoria}${quem}</div></div>
+    <span class="fx-status ${cls}">${txt}</span>
+    <span class="fx-val ${rec?'rec':'desp'}">${fmt(i.valor)}</span>
+    <div class="acts">${action}
+      <button class="ico" title="Editar" onclick='fxEdit(${JSON.stringify(i)})'>✎</button>
+      <button class="ico del" title="Excluir" onclick='fxAskDel(${i.id},${JSON.stringify(i.descricao)})'>🗑</button>
+    </div></div>`;
+}
+async function loadFixas(){
+  const d = await (await fetch("/api/fixas")).json();
+  const r=d.resumo;
+  $("#fx-stats").innerHTML = `
+    <div class="stat"><span class="lbl">Despesas fixas</span><div class="ic red">↓</div><div class="val">${fmt(r.desp_total)}</div><div class="foot">Pago ${fmt(r.desp_pago)} · falta ${fmt(r.desp_pendente)}</div></div>
+    <div class="stat"><span class="lbl">Receitas fixas</span><div class="ic green">↑</div><div class="val">${fmt(r.rec_total)}</div><div class="foot">Recebido ${fmt(r.rec_recebido)} · falta ${fmt(r.rec_pendente)}</div></div>
+    <div class="stat ${r.desp_pendente<=0?"pos":"neg"}"><span class="lbl">A pagar ainda</span><div class="ic gold">◷</div><div class="val">${fmt(r.desp_pendente)}</div><div class="foot">Despesas pendentes</div></div>
+    <div class="stat ${r.rec_pendente<=0?"pos":"neg"}"><span class="lbl">A receber ainda</span><div class="ic gold">◷</div><div class="val">${fmt(r.rec_pendente)}</div><div class="foot">Receitas pendentes</div></div>`;
+  const desp=d.itens.filter(i=>i.tipo==="Despesa"), rec=d.itens.filter(i=>i.tipo==="Receita");
+  $("#fx-desp").innerHTML = desp.length? desp.map(fxRow).join("") : `<p class="hint">Nenhuma conta fixa. Clique em “+ Nova conta”.</p>`;
+  $("#fx-rec").innerHTML  = rec.length?  rec.map(fxRow).join("") : `<p class="hint">Nenhuma receita fixa. Clique em “+ Nova receita”.</p>`;
+}
+window.fxPagar = async(id)=>{ await fetch(`/api/fixas/${id}/pagar`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}); toast("Lançado no mês"); loadFixas(); loadOverview(); };
+window.fxDesfazer = async(id)=>{ await fetch(`/api/fixas/${id}/desfazer`,{method:"POST"}); toast("Desfeito"); loadFixas(); loadOverview(); };
+
+let fxEditId=null;
+function fxSetTipo(v){ $$("#fx-tipo button").forEach(b=>b.classList.toggle("active",b.dataset.v===v)); }
+function fxOpen(title){ $("#fxmodal-title").textContent=title; $("#fxmodal").classList.remove("hidden"); }
+function fxClose(){ $("#fxmodal").classList.add("hidden"); }
+function fxNew(tipo){
+  fxEditId=null; fxSetTipo(tipo);
+  $("#fx-descricao").value=""; $("#fx-valor").value=""; $("#fx-dia").value="";
+  $("#fx-categoria").value=""; $("#fx-subcategoria").value="";
+  fxOpen(tipo==="Receita"?"Nova receita fixa":"Nova conta fixa");
+}
+window.fxEdit=(i)=>{
+  fxEditId=i.id; fxSetTipo(i.tipo);
+  $("#fx-descricao").value=i.descricao; $("#fx-valor").value=i.valor; $("#fx-dia").value=i.dia;
+  $("#fx-categoria").value=i.categoria; $("#fx-subcategoria").value=i.subcategoria;
+  if([...$("#fx-usuario").options].some(o=>o.value===i.usuario)) $("#fx-usuario").value=i.usuario;
+  fxOpen("Editar fixa");
+};
+$$("#fx-tipo button").forEach(b=>b.onclick=()=>fxSetTipo(b.dataset.v));
+$("#fx-add-desp").onclick=()=>fxNew("Despesa");
+$("#fx-add-rec").onclick=()=>fxNew("Receita");
+$("#fxmodal-x").onclick=$("#fxmodal-cancel").onclick=fxClose;
+$("#fxmodal-save").onclick=async()=>{
+  const body={
+    tipo:$("#fx-tipo .active").dataset.v, descricao:$("#fx-descricao").value.trim()||"Fixa",
+    valor:parseFloat($("#fx-valor").value||0), dia:parseInt($("#fx-dia").value||1),
+    categoria:$("#fx-categoria").value.trim()||"Outros", subcategoria:$("#fx-subcategoria").value.trim()||"Outros",
+    usuario:$("#fx-usuario").value
+  };
+  const url=fxEditId?`/api/fixas/${fxEditId}`:"/api/fixas";
+  await fetch(url,{method:fxEditId?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  fxClose(); toast(fxEditId?"Fixa atualizada":"Fixa criada"); loadFixas();
+};
+window.fxAskDel=(id,desc)=>{ delMode="fixa"; delId=id; $("#confirm-txt").innerHTML=`Remover a fixa <b>“${desc}”</b>? Lançamentos já feitos permanecem.`; $("#confirm").classList.remove("hidden"); };
 
 // ===== Gráficos =====
 let CH={};

@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, extract, or_
 from datetime import datetime
-from database import SessionLocal, Lancamento
+from database import SessionLocal, Lancamento, Fixa
 import catstore
 
 app = FastAPI()
@@ -337,4 +337,143 @@ def cat_rec_del(kw: str):
     d = catstore.load()
     d["receitas"].pop(kw, None)
     catstore.save(d)
+    return {"ok": True}
+
+
+# ---------- FIXAS (contas/receitas fixas mensais) ----------
+def _lanc_do_mes(db, fid, mes, ano):
+    return db.query(Lancamento).filter(
+        Lancamento.fixa_id == fid,
+        extract("month", Lancamento.data) == mes,
+        extract("year", Lancamento.data) == ano,
+    ).first()
+
+
+def _fixa_dict(db, f, mes, ano):
+    l = _lanc_do_mes(db, f.id, mes, ano)
+    return {
+        "id": f.id, "tipo": f.tipo, "descricao": f.descricao,
+        "categoria": f.categoria, "subcategoria": f.subcategoria,
+        "valor": round(f.valor or 0.0, 2), "dia": f.dia,
+        "usuario": f.usuario, "ativo": bool(f.ativo),
+        "pago": l is not None, "lanc_id": l.id if l else None,
+    }
+
+
+@app.get("/api/fixas")
+def fixas_list():
+    db = SessionLocal()
+    agora = datetime.now()
+    mes, ano = agora.month, agora.year
+    fixas = db.query(Fixa).order_by(Fixa.dia.asc(), Fixa.descricao.asc()).all()
+    itens = [_fixa_dict(db, f, mes, ano) for f in fixas]
+    db.close()
+    desp = [i for i in itens if i["tipo"] == "Despesa" and i["ativo"]]
+    rec = [i for i in itens if i["tipo"] == "Receita" and i["ativo"]]
+    tot = lambda arr: round(sum(i["valor"] for i in arr), 2)
+    return {
+        "itens": itens,
+        "resumo": {
+            "desp_total": tot(desp),
+            "desp_pago": tot([i for i in desp if i["pago"]]),
+            "desp_pendente": tot([i for i in desp if not i["pago"]]),
+            "rec_total": tot(rec),
+            "rec_recebido": tot([i for i in rec if i["pago"]]),
+            "rec_pendente": tot([i for i in rec if not i["pago"]]),
+        },
+    }
+
+
+@app.post("/api/fixas")
+def fixa_criar(data: dict = Body(...)):
+    db = SessionLocal()
+    f = Fixa(
+        tipo=data.get("tipo") or "Despesa",
+        descricao=data.get("descricao") or "Conta fixa",
+        categoria=data.get("categoria") or "Outros",
+        subcategoria=data.get("subcategoria") or "Outros",
+        valor=float(data.get("valor") or 0),
+        dia=int(data.get("dia") or 1),
+        usuario=data.get("usuario") or "—",
+        ativo=True,
+    )
+    db.add(f)
+    db.commit()
+    agora = datetime.now()
+    r = _fixa_dict(db, f, agora.month, agora.year)
+    db.close()
+    return r
+
+
+@app.put("/api/fixas/{fid}")
+def fixa_editar(fid: int, data: dict = Body(...)):
+    db = SessionLocal()
+    f = db.get(Fixa, fid)
+    if not f:
+        db.close()
+        return JSONResponse({"erro": "não encontrado"}, status_code=404)
+    for campo in ("tipo", "descricao", "categoria", "subcategoria", "usuario"):
+        if data.get(campo) is not None:
+            setattr(f, campo, data[campo])
+    if data.get("valor") is not None:
+        f.valor = float(data["valor"])
+    if data.get("dia") is not None:
+        f.dia = int(data["dia"])
+    if data.get("ativo") is not None:
+        f.ativo = bool(data["ativo"])
+    db.commit()
+    agora = datetime.now()
+    r = _fixa_dict(db, f, agora.month, agora.year)
+    db.close()
+    return r
+
+
+@app.delete("/api/fixas/{fid}")
+def fixa_excluir(fid: int):
+    db = SessionLocal()
+    f = db.get(Fixa, fid)
+    if f:
+        db.delete(f)
+        db.commit()
+    db.close()
+    return {"ok": True}
+
+
+@app.post("/api/fixas/{fid}/pagar")
+def fixa_pagar(fid: int, data: dict = Body(default={})):
+    db = SessionLocal()
+    f = db.get(Fixa, fid)
+    if not f:
+        db.close()
+        return JSONResponse({"erro": "não encontrado"}, status_code=404)
+    agora = datetime.now()
+    mes, ano = agora.month, agora.year
+    ja = _lanc_do_mes(db, fid, mes, ano)
+    if ja:
+        db.close()
+        return {"ok": True, "ja": True}
+    # data do lançamento = dia de vencimento neste mês (limitado ao fim do mês)
+    import calendar
+    dia = min(int(f.dia or 1), calendar.monthrange(ano, mes)[1])
+    dt = datetime(ano, mes, dia)
+    l = Lancamento(
+        usuario=f.usuario, tipo=f.tipo, descricao=f.descricao,
+        categoria=f.categoria, subcategoria=f.subcategoria,
+        valor=float(data.get("valor", f.valor) or 0), data=dt, fixa_id=fid,
+    )
+    db.add(l)
+    db.commit()
+    db.close()
+    return {"ok": True}
+
+
+@app.post("/api/fixas/{fid}/desfazer")
+def fixa_desfazer(fid: int):
+    db = SessionLocal()
+    agora = datetime.now()
+    l = _lanc_do_mes(db, fid, agora.month, agora.year)
+    if l:
+        db.delete(l)
+        db.commit()
+    db.close()
     return {"ok": True}
