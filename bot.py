@@ -1,14 +1,21 @@
 import calendar
 from datetime import datetime
-from sqlalchemy import extract
+from sqlalchemy import extract, func
 from telegram import Update
 from telegram.ext import ContextTypes
-from database import SessionLocal, Lancamento, Fixa
+from database import SessionLocal, Lancamento, Fixa, Cofrinho, CofrinhoMov, Bem
 from parser import parse
 
 
 def _brl(v):
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _cofre_saldo(db, cid):
+    def s(tipo):
+        return db.query(func.coalesce(func.sum(CofrinhoMov.valor), 0.0)).filter(
+            CofrinhoMov.cofrinho_id == cid, CofrinhoMov.tipo == tipo).scalar()
+    return round(s("Aporte") - s("Resgate") + s("Rendimento"), 2)
 
 
 def _lanc_do_mes(db, fid, mes, ano):
@@ -141,3 +148,53 @@ async def pagar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db.close()
     verbo = "Receita registrada" if f.tipo == "Receita" else "Conta paga"
     await update.message.reply_text(f"✅ {verbo}: {f.descricao} — {_brl(f.valor)}")
+
+
+async def cofrinho(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = SessionLocal()
+    cofres = db.query(Cofrinho).filter(Cofrinho.ativo == True).order_by(Cofrinho.id.asc()).all()
+    linhas = ["🏦 *Cofrinhos*", ""]
+    total_c = 0.0
+    for c in cofres:
+        saldo = _cofre_saldo(db, c.id)
+        total_c += saldo
+        linhas.append(f"#{c.id} {c.emoji or ''} {c.nome} — {_brl(saldo)}  (/aportar {c.id} <valor>)")
+    if not cofres:
+        linhas.append("_Nenhum cofrinho cadastrado._")
+    rec = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Receita").scalar()
+    desp = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Despesa").scalar()
+    bens = db.query(func.coalesce(func.sum(Bem.valor), 0.0)).filter(Bem.ativo == True).scalar()
+    db.close()
+    conta = rec - desp
+    total = conta + total_c + bens
+    linhas += ["", f"💰 Conta: {_brl(conta)}", f"◈ Cofrinhos: {_brl(total_c)}", f"⌂ Bens: {_brl(bens)}",
+               f"*Patrimônio total: {_brl(total)}*"]
+    await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
+
+
+async def aportar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2 or not context.args[0].isdigit():
+        await update.message.reply_text("Use: /aportar 1 500  (nº do cofrinho e valor)")
+        return
+    cid = int(context.args[0])
+    try:
+        valor = float(context.args[1].replace(",", "."))
+    except ValueError:
+        await update.message.reply_text("Valor inválido. Ex.: /aportar 1 500")
+        return
+    db = SessionLocal()
+    c = db.get(Cofrinho, cid)
+    if not c:
+        db.close()
+        await update.message.reply_text(f"Cofrinho #{cid} não encontrado. Veja /cofrinho")
+        return
+    usuario = update.effective_user.first_name or "Casal"
+    l = Lancamento(usuario=usuario, tipo="Despesa", descricao=f"Aporte · {c.nome}",
+                   categoria="Investimento", subcategoria=c.nome, valor=valor)
+    db.add(l)
+    db.commit()
+    db.add(CofrinhoMov(cofrinho_id=cid, tipo="Aporte", valor=valor, lanc_id=l.id))
+    db.commit()
+    saldo = _cofre_saldo(db, cid)
+    db.close()
+    await update.message.reply_text(f"✅ Aporte de {_brl(valor)} em {c.nome}.\nSaldo do cofrinho: {_brl(saldo)}")

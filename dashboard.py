@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, extract, or_
 from datetime import datetime
-from database import SessionLocal, Lancamento, Fixa
+from database import SessionLocal, Lancamento, Fixa, Cofrinho, CofrinhoMov, Bem, BemSnapshot, Inflacao
 import catstore
 
 app = FastAPI()
@@ -475,5 +475,281 @@ def fixa_desfazer(fid: int):
     if l:
         db.delete(l)
         db.commit()
+    db.close()
+    return {"ok": True}
+
+
+# ---------- COFRINHO / INVESTIMENTOS / BENS / INFLAÇÃO ----------
+def _saldo_conta(db):
+    r = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Receita").scalar()
+    d = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Despesa").scalar()
+    return round(r - d, 2)
+
+
+def _cofre_dict(db, c):
+    ap = db.query(func.coalesce(func.sum(CofrinhoMov.valor), 0.0)).filter(
+        CofrinhoMov.cofrinho_id == c.id, CofrinhoMov.tipo == "Aporte").scalar()
+    rg = db.query(func.coalesce(func.sum(CofrinhoMov.valor), 0.0)).filter(
+        CofrinhoMov.cofrinho_id == c.id, CofrinhoMov.tipo == "Resgate").scalar()
+    rd = db.query(func.coalesce(func.sum(CofrinhoMov.valor), 0.0)).filter(
+        CofrinhoMov.cofrinho_id == c.id, CofrinhoMov.tipo == "Rendimento").scalar()
+    aportado = round(ap - rg, 2)
+    rend = round(rd, 2)
+    saldo = round(aportado + rend, 2)
+    movs = db.query(CofrinhoMov).filter(CofrinhoMov.cofrinho_id == c.id).order_by(CofrinhoMov.id.desc()).limit(6).all()
+    return {
+        "id": c.id, "nome": c.nome, "emoji": c.emoji or "🏦",
+        "meta": round(c.meta or 0.0, 2), "ativo": bool(c.ativo),
+        "aportado": aportado, "rendimento": rend, "saldo": saldo,
+        "progresso": round(min(saldo / c.meta, 1.0) * 100, 1) if (c.meta or 0) > 0 else None,
+        "movs": [{"id": m.id, "tipo": m.tipo, "valor": round(m.valor or 0.0, 2),
+                  "data": m.data.isoformat() if m.data else None, "obs": m.obs} for m in movs],
+    }
+
+
+def _infl_acumulada(db, ano=None):
+    q = db.query(Inflacao)
+    if ano:
+        q = q.filter(Inflacao.ano == ano)
+    fator = 1.0
+    for i in q.all():
+        fator *= 1 + (i.pct or 0.0) / 100
+    return round((fator - 1) * 100, 2)
+
+
+def _infl_12m(db):
+    rows = db.query(Inflacao).order_by(Inflacao.ano.desc(), Inflacao.mes.desc()).limit(12).all()
+    fator = 1.0
+    for i in rows:
+        fator *= 1 + (i.pct or 0.0) / 100
+    return round((fator - 1) * 100, 2)
+
+
+@app.get("/api/cofrinhos")
+def cofrinhos_list():
+    db = SessionLocal()
+    agora = datetime.now()
+    cofres = [_cofre_dict(db, c) for c in db.query(Cofrinho).filter(Cofrinho.ativo == True).order_by(Cofrinho.id.asc()).all()]
+    bens = db.query(Bem).filter(Bem.ativo == True).all()
+    total_cofres = round(sum(c["saldo"] for c in cofres), 2)
+    total_bens = round(sum(b.valor or 0.0 for b in bens), 2)
+    conta = _saldo_conta(db)
+    infl_mes = db.query(Inflacao).filter(Inflacao.mes == agora.month, Inflacao.ano == agora.year).first()
+    resumo = {
+        "conta": conta,
+        "cofres": total_cofres,
+        "bens": total_bens,
+        "patrimonio_total": round(conta + total_cofres + total_bens, 2),
+        "infl_mes": round(infl_mes.pct, 2) if infl_mes else None,
+        "infl_ano": _infl_acumulada(db, agora.year),
+        "infl_12m": _infl_12m(db),
+    }
+    db.close()
+    return {"cofres": cofres, "resumo": resumo}
+
+
+@app.post("/api/cofrinhos")
+def cofrinho_criar(data: dict = Body(...)):
+    db = SessionLocal()
+    c = Cofrinho(
+        nome=data.get("nome") or "Cofrinho",
+        meta=float(data.get("meta") or 0),
+        emoji=data.get("emoji") or "🏦",
+        ativo=True,
+    )
+    db.add(c)
+    db.commit()
+    r = _cofre_dict(db, c)
+    db.close()
+    return r
+
+
+@app.put("/api/cofrinhos/{cid}")
+def cofrinho_editar(cid: int, data: dict = Body(...)):
+    db = SessionLocal()
+    c = db.get(Cofrinho, cid)
+    if not c:
+        db.close()
+        return JSONResponse({"erro": "não encontrado"}, status_code=404)
+    if data.get("nome") is not None:
+        c.nome = data["nome"]
+    if data.get("emoji") is not None:
+        c.emoji = data["emoji"]
+    if data.get("meta") is not None:
+        c.meta = float(data["meta"])
+    db.commit()
+    r = _cofre_dict(db, c)
+    db.close()
+    return r
+
+
+@app.delete("/api/cofrinhos/{cid}")
+def cofrinho_excluir(cid: int):
+    db = SessionLocal()
+    for m in db.query(CofrinhoMov).filter(CofrinhoMov.cofrinho_id == cid).all():
+        if m.lanc_id:
+            l = db.get(Lancamento, m.lanc_id)
+            if l:
+                db.delete(l)
+        db.delete(m)
+    c = db.get(Cofrinho, cid)
+    if c:
+        db.delete(c)
+    db.commit()
+    db.close()
+    return {"ok": True}
+
+
+@app.post("/api/cofrinhos/{cid}/mov")
+def cofrinho_mov(cid: int, data: dict = Body(...)):
+    db = SessionLocal()
+    c = db.get(Cofrinho, cid)
+    if not c:
+        db.close()
+        return JSONResponse({"erro": "não encontrado"}, status_code=404)
+    tipo = data.get("tipo") or "Aporte"
+    valor = float(data.get("valor") or 0)
+    obs = data.get("obs") or ""
+    usuario = data.get("usuario") or "Casal"
+    lanc_id = None
+    # Aporte sai da conta (despesa); Resgate volta pra conta (receita); Rendimento não toca o fluxo
+    if tipo in ("Aporte", "Resgate"):
+        l = Lancamento(
+            usuario=usuario,
+            tipo="Despesa" if tipo == "Aporte" else "Receita",
+            descricao=f"{tipo} · {c.nome}",
+            categoria="Investimento", subcategoria=c.nome, valor=valor,
+        )
+        db.add(l)
+        db.commit()
+        lanc_id = l.id
+    m = CofrinhoMov(cofrinho_id=cid, tipo=tipo, valor=valor, obs=obs, lanc_id=lanc_id)
+    db.add(m)
+    db.commit()
+    r = _cofre_dict(db, c)
+    db.close()
+    return r
+
+
+@app.delete("/api/cofrinhos/mov/{mid}")
+def cofrinho_mov_del(mid: int):
+    db = SessionLocal()
+    m = db.get(CofrinhoMov, mid)
+    if m:
+        if m.lanc_id:
+            l = db.get(Lancamento, m.lanc_id)
+            if l:
+                db.delete(l)
+        db.delete(m)
+        db.commit()
+    db.close()
+    return {"ok": True}
+
+
+def _bem_dict(db, b):
+    agora = datetime.now()
+    ant = db.query(BemSnapshot).filter(
+        BemSnapshot.bem_id == b.id,
+        ~((BemSnapshot.mes == agora.month) & (BemSnapshot.ano == agora.year)),
+    ).order_by(BemSnapshot.ano.desc(), BemSnapshot.mes.desc()).first()
+    base = ant.valor if ant else None
+    var = round((b.valor or 0.0) - base, 2) if base is not None else None
+    var_pct = round(var / base * 100, 2) if (base not in (None, 0)) else None
+    return {
+        "id": b.id, "nome": b.nome, "categoria": b.categoria,
+        "valor": round(b.valor or 0.0, 2), "base": base,
+        "variacao": var, "variacao_pct": var_pct,
+    }
+
+
+@app.get("/api/bens")
+def bens_list():
+    db = SessionLocal()
+    bens = [_bem_dict(db, b) for b in db.query(Bem).filter(Bem.ativo == True).order_by(Bem.id.asc()).all()]
+    total = round(sum(b["valor"] for b in bens), 2)
+    db.close()
+    return {"bens": bens, "total": total}
+
+
+def _snapshot_upsert(db, bem_id, valor):
+    agora = datetime.now()
+    s = db.query(BemSnapshot).filter(
+        BemSnapshot.bem_id == bem_id, BemSnapshot.mes == agora.month, BemSnapshot.ano == agora.year).first()
+    if s:
+        s.valor = valor
+    else:
+        db.add(BemSnapshot(bem_id=bem_id, mes=agora.month, ano=agora.year, valor=valor))
+
+
+@app.post("/api/bens")
+def bem_criar(data: dict = Body(...)):
+    db = SessionLocal()
+    valor = float(data.get("valor") or 0)
+    b = Bem(nome=data.get("nome") or "Bem", categoria=data.get("categoria") or "Outros", valor=valor, ativo=True)
+    db.add(b)
+    db.commit()
+    _snapshot_upsert(db, b.id, valor)
+    db.commit()
+    r = _bem_dict(db, b)
+    db.close()
+    return r
+
+
+@app.put("/api/bens/{bid}")
+def bem_editar(bid: int, data: dict = Body(...)):
+    db = SessionLocal()
+    b = db.get(Bem, bid)
+    if not b:
+        db.close()
+        return JSONResponse({"erro": "não encontrado"}, status_code=404)
+    if data.get("nome") is not None:
+        b.nome = data["nome"]
+    if data.get("categoria") is not None:
+        b.categoria = data["categoria"]
+    if data.get("valor") is not None:
+        b.valor = float(data["valor"])
+        _snapshot_upsert(db, b.id, b.valor)
+    db.commit()
+    r = _bem_dict(db, b)
+    db.close()
+    return r
+
+
+@app.delete("/api/bens/{bid}")
+def bem_excluir(bid: int):
+    db = SessionLocal()
+    b = db.get(Bem, bid)
+    if b:
+        for s in db.query(BemSnapshot).filter(BemSnapshot.bem_id == bid).all():
+            db.delete(s)
+        db.delete(b)
+        db.commit()
+    db.close()
+    return {"ok": True}
+
+
+@app.get("/api/inflacao")
+def inflacao_list():
+    db = SessionLocal()
+    rows = db.query(Inflacao).order_by(Inflacao.ano.desc(), Inflacao.mes.desc()).limit(18).all()
+    agora = datetime.now()
+    out = [{"mes": i.mes, "ano": i.ano, "pct": round(i.pct or 0.0, 2)} for i in rows]
+    r = {"itens": out, "ano": _infl_acumulada(db, agora.year), "m12": _infl_12m(db)}
+    db.close()
+    return r
+
+
+@app.post("/api/inflacao")
+def inflacao_upsert(data: dict = Body(...)):
+    db = SessionLocal()
+    mes = int(data.get("mes") or datetime.now().month)
+    ano = int(data.get("ano") or datetime.now().year)
+    pct = float(data.get("pct") or 0)
+    i = db.query(Inflacao).filter(Inflacao.mes == mes, Inflacao.ano == ano).first()
+    if i:
+        i.pct = pct
+    else:
+        db.add(Inflacao(mes=mes, ano=ano, pct=pct))
+    db.commit()
     db.close()
     return {"ok": True}

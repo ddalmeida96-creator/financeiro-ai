@@ -202,6 +202,35 @@ select:focus,input:focus{outline:none;border-color:var(--gold-soft)}
   .fx-status{order:3}
 }
 
+/* COFRINHO */
+.co-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.co-card{border:1px solid var(--line);border-radius:16px;padding:18px;background:#FFFDF9;transition:.2s}
+.co-card:hover{border-color:var(--gold-soft);box-shadow:var(--shadow-sm)}
+.co-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.co-ident{display:flex;gap:12px;align-items:center}
+.co-emoji{font-size:26px;line-height:1;width:44px;height:44px;display:grid;place-items:center;background:var(--gold-tint);border-radius:12px}
+.co-nome{font-weight:600;font-size:15.5px}
+.co-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.co-sub b.rec{color:var(--green)}.co-sub b.desp{color:var(--red)}
+.co-acts{display:flex;gap:2px}
+.co-saldo{font-family:'Playfair Display',serif;font-size:26px;font-weight:600;margin:12px 0 4px}
+.co-bar{height:7px;background:var(--line2);border-radius:20px;overflow:hidden;margin-top:8px}
+.co-bar-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-soft));border-radius:20px}
+.co-bar-meta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:5px}
+.co-btns{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+.co-movs{margin-top:12px;border-top:1px solid var(--line2);padding-top:8px}
+.co-mov{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13px}
+.co-mtag{font-size:10.5px;font-weight:600;padding:3px 8px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
+.co-mtag.rec{background:var(--green-tint);color:var(--green)}
+.co-mtag.desp{background:var(--red-tint);color:var(--red)}
+.co-mtag.gold{background:var(--gold-tint);color:var(--gold)}
+.co-mv{font-weight:600}
+.co-md{margin-left:auto;color:var(--faint);font-size:12px}
+.infl-line{display:flex;flex-wrap:wrap;gap:8px}
+.infl-chip{font-size:12.5px;color:var(--muted);background:var(--line2);padding:6px 11px;border-radius:20px}
+.infl-chip b{color:var(--ink);font-weight:600;text-transform:capitalize}
+@media(max-width:760px){.co-grid{grid-template-columns:1fr}}
+
 /* MODAL */
 .modal-bg{position:fixed;inset:0;background:rgba(29,27,23,.34);backdrop-filter:blur(4px);display:grid;place-items:center;z-index:50;animation:fade .25s;padding:20px}
 .modal{background:#fff;border-radius:22px;width:100%;max-width:500px;box-shadow:0 30px 80px rgba(0,0,0,.25);animation:pop .3s cubic-bezier(.2,.8,.3,1);overflow:hidden}

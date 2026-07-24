@@ -4,7 +4,7 @@ import uvicorn
 from dotenv import load_dotenv
 from telegram.ext import Application, MessageHandler, CommandHandler, filters
 from database import init_db
-from bot import handle_message, ultimos, apagar, fixas, pagar
+from bot import handle_message, ultimos, apagar, fixas, pagar, cofrinho, aportar
 from dashboard import app
 
 load_dotenv()
@@ -21,6 +21,8 @@ async def main():
     tg.add_handler(CommandHandler("apagar", apagar))
     tg.add_handler(CommandHandler("fixas", fixas))
     tg.add_handler(CommandHandler("pagar", pagar))
+    tg.add_handler(CommandHandler("cofrinho", cofrinho))
+    tg.add_handler(CommandHandler("aportar", aportar))
     tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     server = uvicorn.Server(

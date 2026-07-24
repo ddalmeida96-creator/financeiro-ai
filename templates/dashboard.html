@@ -26,6 +26,7 @@
       <button class="nav-item active" data-view="inicio"><span class="ni">◇</span> Início</button>
       <button class="nav-item" data-view="lancamentos"><span class="ni">≡</span> Lançamentos</button>
       <button class="nav-item" data-view="fixas"><span class="ni">↻</span> Fixas</button>
+      <button class="nav-item" data-view="cofrinho"><span class="ni">◈</span> Cofrinho</button>
       <button class="nav-item" data-view="historico"><span class="ni">⏱</span> Histórico</button>
       <button class="nav-item" data-view="graficos"><span class="ni">◔</span> Gráficos</button>
       <button class="nav-item" data-view="categorias"><span class="ni">❋</span> Categorias</button>
@@ -90,6 +91,25 @@
         <div class="fx-list" id="fx-rec"></div>
       </div>
       <p class="hint">Marque como paga/recebida para lançar no mês. No próximo mês elas voltam a aparecer como pendentes.</p>
+    </section>
+
+    <!-- COFRINHO -->
+    <section class="view hidden" id="view-cofrinho">
+      <div class="stat-grid" id="co-stats"></div>
+      <div class="card">
+        <div class="card-head"><h3>Cofrinhos de investimento</h3><button class="btn-soft" id="co-add">+ Novo cofrinho</button></div>
+        <div class="co-grid" id="co-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Bens & patrimônio</h3><button class="btn-soft" id="bem-add">+ Novo bem</button></div>
+        <div class="fx-list" id="bem-list"></div>
+        <p class="hint">Atualize o valor de cada bem quando quiser; comparamos com o último mês para mostrar valorização ou desvalorização.</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Inflação (IPCA)</h3><button class="btn-soft" id="infl-edit">Informar mês</button></div>
+        <div id="infl-box"></div>
+        <p class="hint">O rendimento dos cofrinhos comparado ao IPCA mostra se o dinheiro ganhou ou perdeu poder de compra.</p>
+      </div>
     </section>
 
     <!-- HISTÓRICO -->
@@ -198,6 +218,71 @@
       <label>Pessoa<select id="fx-usuario"></select></label>
     </div>
     <div class="modal-foot"><button class="btn-ghost" id="fxmodal-cancel">Cancelar</button><button class="btn-primary" id="fxmodal-save">Salvar</button></div>
+  </div>
+</div>
+
+<!-- MODAL COFRINHO -->
+<div class="modal-bg hidden" id="comodal">
+  <div class="modal small">
+    <div class="modal-head"><h3 id="comodal-title">Novo cofrinho</h3><button class="x" id="comodal-x">×</button></div>
+    <div class="modal-body">
+      <div class="row2">
+        <label>Emoji<input id="co-emoji" maxlength="2" placeholder="🏦"></label>
+        <label>Meta (R$) · opcional<input id="co-meta" type="number" step="0.01" placeholder="0,00"></label>
+      </div>
+      <label>Nome<input id="co-nome" placeholder="Ex.: Reserva de emergência"></label>
+    </div>
+    <div class="modal-foot"><button class="btn-ghost" id="comodal-cancel">Cancelar</button><button class="btn-primary" id="comodal-save">Salvar</button></div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMENTO (aporte/resgate/rendimento) -->
+<div class="modal-bg hidden" id="momodal">
+  <div class="modal small">
+    <div class="modal-head"><h3 id="momodal-title">Movimentar</h3><button class="x" id="momodal-x">×</button></div>
+    <div class="modal-body">
+      <label>Tipo<div class="seg" id="mo-tipo">
+        <button data-v="Aporte" class="active">Aporte</button>
+        <button data-v="Resgate">Resgate</button>
+        <button data-v="Rendimento">Rendimento</button></div></label>
+      <div class="row2">
+        <label>Valor (R$)<input id="mo-valor" type="number" step="0.01" placeholder="0,00"></label>
+        <label>Pessoa<select id="mo-usuario"></select></label>
+      </div>
+      <label>Observação · opcional<input id="mo-obs" placeholder="Ex.: dividendos, ajuste"></label>
+      <p class="hint" id="mo-hint" style="margin:-4px 0 0"></p>
+    </div>
+    <div class="modal-foot"><button class="btn-ghost" id="momodal-cancel">Cancelar</button><button class="btn-primary" id="momodal-save">Salvar</button></div>
+  </div>
+</div>
+
+<!-- MODAL BEM -->
+<div class="modal-bg hidden" id="bemmodal">
+  <div class="modal small">
+    <div class="modal-head"><h3 id="bemmodal-title">Novo bem</h3><button class="x" id="bemmodal-x">×</button></div>
+    <div class="modal-body">
+      <label>Nome<input id="bem-nome" placeholder="Ex.: Apartamento, Carro"></label>
+      <div class="row2">
+        <label>Categoria<input id="bem-categoria" placeholder="Imóvel"></label>
+        <label>Valor atual (R$)<input id="bem-valor" type="number" step="0.01" placeholder="0,00"></label>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn-ghost" id="bemmodal-cancel">Cancelar</button><button class="btn-primary" id="bemmodal-save">Salvar</button></div>
+  </div>
+</div>
+
+<!-- MODAL INFLAÇÃO -->
+<div class="modal-bg hidden" id="inflmodal">
+  <div class="modal small">
+    <div class="modal-head"><h3>Informar IPCA do mês</h3><button class="x" id="inflmodal-x">×</button></div>
+    <div class="modal-body">
+      <div class="row2">
+        <label>Mês<input id="infl-mes" type="number" min="1" max="12" placeholder="7"></label>
+        <label>Ano<input id="infl-ano" type="number" placeholder="2026"></label>
+      </div>
+      <label>Variação do mês (%)<input id="infl-pct" type="number" step="0.01" placeholder="0,45"></label>
+    </div>
+    <div class="modal-foot"><button class="btn-ghost" id="inflmodal-cancel">Cancelar</button><button class="btn-primary" id="inflmodal-save">Salvar</button></div>
   </div>
 </div>
 

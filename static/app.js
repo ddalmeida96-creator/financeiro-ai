@@ -34,6 +34,7 @@ function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.remove(
 const TITLES = {
   inicio:["Início","Visão geral do mês"], lancamentos:["Lançamentos","Gerencie seus registros"],
   fixas:["Fixas","Contas e receitas fixas do mês"],
+  cofrinho:["Cofrinho","Investimentos, bens e inflação"],
   historico:["Histórico","Todos os lançamentos"], graficos:["Gráficos","Análise visual do casal"],
   categorias:["Categorias","Classificação automática do bot"]
 };
@@ -46,6 +47,7 @@ function go(view){
   if(view==="graficos") loadCharts();
   if(view==="categorias") loadCats();
   if(view==="fixas") loadFixas();
+  if(view==="cofrinho") loadCofrinho();
   if(view==="historico") loadTable("h");
   if(view==="lancamentos") loadTable("l");
 }
@@ -104,6 +106,7 @@ async function loadMeta(){
   const uSel = (META.usuarios.length?META.usuarios:["—"]).map(u=>`<option value="${u}">${dispName(u)}</option>`).join("");
   $("#f-usuario").innerHTML = uSel;
   if($("#fx-usuario")) $("#fx-usuario").innerHTML = uSel;
+  if($("#mo-usuario")) $("#mo-usuario").innerHTML = '<option value="Casal">Casal</option>'+uSel;
 }
 
 // ===== Tabelas =====
@@ -204,6 +207,8 @@ $("#confirm-no").onclick=()=>$("#confirm").classList.add("hidden");
 $("#confirm-yes").onclick=async()=>{
   if(delMode==="cat"){ await fetch(delUrl,{method:"DELETE"}); $("#confirm").classList.add("hidden"); toast("Removido"); loadCats(); delMode=null; return; }
   if(delMode==="fixa"){ await fetch(`/api/fixas/${delId}`,{method:"DELETE"}); $("#confirm").classList.add("hidden"); toast("Fixa removida"); loadFixas(); delMode=null; return; }
+  if(delMode==="cofre"){ await fetch(`/api/cofrinhos/${delId}`,{method:"DELETE"}); $("#confirm").classList.add("hidden"); toast("Cofrinho excluído"); loadCofrinho(); loadOverview(); delMode=null; return; }
+  if(delMode==="bem"){ await fetch(`/api/bens/${delId}`,{method:"DELETE"}); $("#confirm").classList.add("hidden"); toast("Bem excluído"); loadCofrinho(); delMode=null; return; }
   await fetch(`/api/lancamentos/${delId}`,{method:"DELETE"});
   $("#confirm").classList.add("hidden"); toast("Lançamento excluído"); (delCb||refreshAll)();
 };
@@ -317,6 +322,125 @@ $("#fxmodal-save").onclick=async()=>{
   fxClose(); toast(fxEditId?"Fixa atualizada":"Fixa criada"); loadFixas();
 };
 window.fxAskDel=(id,desc)=>{ delMode="fixa"; delId=id; $("#confirm-txt").innerHTML=`Remover a fixa <b>“${desc}”</b>? Lançamentos já feitos permanecem.`; $("#confirm").classList.remove("hidden"); };
+
+// ===== Cofrinho / Investimentos / Bens / Inflação =====
+const pct = v => (v==null?"—":(v>0?"+":"")+v.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2})+"%");
+let INFL={ano:0,m12:0};
+
+function coCard(c){
+  const bar = c.progresso!=null
+    ? `<div class="co-bar"><div class="co-bar-fill" style="width:${c.progresso}%"></div></div>
+       <div class="co-bar-meta"><span>${c.progresso}% da meta</span><span>${fmt(c.meta)}</span></div>` : "";
+  const rendCls = c.rendimento>=0?"rec":"desp";
+  const movs = c.movs.length ? c.movs.map(m=>{
+    const sinal = m.tipo==="Resgate"?"−":"+";
+    const mc = m.tipo==="Rendimento"?"gold":(m.tipo==="Resgate"?"desp":"rec");
+    return `<div class="co-mov"><span class="co-mtag ${mc}">${m.tipo}</span>
+      <span class="co-mv">${sinal} ${fmt(m.valor)}</span>
+      <span class="co-md">${fmtDate(m.data)}</span>
+      <button class="ico del" onclick="coMovDel(${m.id})">🗑</button></div>`;
+  }).join("") : `<p class="hint" style="padding:6px 0 0">Sem movimentos ainda.</p>`;
+  return `<div class="co-card">
+    <div class="co-top">
+      <div class="co-ident"><span class="co-emoji">${c.emoji}</span>
+        <div><div class="co-nome">${c.nome}</div>
+          <div class="co-sub">Aportado ${fmt(c.aportado)} · rend. <b class="${rendCls}">${fmt(c.rendimento)}</b></div></div></div>
+      <div class="co-acts">
+        <button class="ico" onclick='coEdit(${JSON.stringify(c)})'>✎</button>
+        <button class="ico del" onclick='coAskDel(${c.id},${JSON.stringify(c.nome)})'>🗑</button></div>
+    </div>
+    <div class="co-saldo">${fmt(c.saldo)}</div>
+    ${bar}
+    <div class="co-btns">
+      <button class="btn-primary sm" onclick="coMov(${c.id},'Aporte')">Aportar</button>
+      <button class="btn-soft sm" onclick="coMov(${c.id},'Resgate')">Resgatar</button>
+      <button class="btn-soft sm" onclick="coMov(${c.id},'Rendimento')">Rendimento</button>
+    </div>
+    <div class="co-movs">${movs}</div>
+  </div>`;
+}
+
+function bemRow(b){
+  const up = b.variacao!=null && b.variacao>0, down = b.variacao!=null && b.variacao<0;
+  const cls = up?"rec":(down?"desp":"");
+  const varTxt = b.variacao==null ? "novo" : `${up?"▲":down?"▼":"■"} ${fmt(Math.abs(b.variacao))} (${pct(b.variacao_pct)})`;
+  return `<div class="fx-row">
+    <div class="fx-main"><div class="fx-desc">${b.nome}</div>
+      <div class="fx-meta">${b.categoria||"Outros"}${b.base!=null?" · mês ant. "+fmt(b.base):""}</div></div>
+    <span class="fx-status ${cls||'pend'}">${varTxt}</span>
+    <span class="fx-val ${cls==='desp'?'desp':'rec'}">${fmt(b.valor)}</span>
+    <div class="acts">
+      <button class="ico" title="Atualizar valor" onclick='bemEdit(${JSON.stringify(b)})'>✎</button>
+      <button class="ico del" onclick='bemAskDel(${b.id},${JSON.stringify(b.nome)})'>🗑</button>
+    </div></div>`;
+}
+
+async function loadCofrinho(){
+  const [d, bd, inf] = await Promise.all([
+    (await fetch("/api/cofrinhos")).json(),
+    (await fetch("/api/bens")).json(),
+    (await fetch("/api/inflacao")).json(),
+  ]);
+  const r=d.resumo; INFL={ano:inf.ano,m12:inf.m12};
+  $("#co-stats").innerHTML = `
+    <div class="stat"><span class="lbl">Patrimônio total</span><div class="ic gold">✦</div><div class="val">${fmt(r.patrimonio_total)}</div><div class="foot">Conta + cofrinhos + bens</div></div>
+    <div class="stat"><span class="lbl">Em cofrinhos</span><div class="ic green">◈</div><div class="val">${fmt(r.cofres)}</div><div class="foot">Investido + rendimento</div></div>
+    <div class="stat"><span class="lbl">Em bens</span><div class="ic gold">⌂</div><div class="val">${fmt(r.bens)}</div><div class="foot">Imóveis, veículos, etc.</div></div>
+    <div class="stat"><span class="lbl">Inflação (IPCA)</span><div class="ic red">%</div><div class="val">${pct(r.infl_ano)}</div><div class="foot">No ano · 12m ${pct(r.infl_12m)}</div></div>`;
+  $("#co-list").innerHTML = d.cofres.length ? d.cofres.map(coCard).join("") : `<p class="hint">Nenhum cofrinho. Clique em “+ Novo cofrinho”.</p>`;
+  $("#bem-list").innerHTML = bd.bens.length ? bd.bens.map(bemRow).join("") : `<p class="hint">Nenhum bem cadastrado.</p>`;
+  const meses=["","jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  $("#infl-box").innerHTML = `<div class="infl-line">`+
+    inf.itens.map(i=>`<span class="infl-chip"><b>${meses[i.mes]}/${String(i.ano).slice(2)}</b> ${pct(i.pct)}</span>`).join("")+
+    `</div>`;
+}
+
+// --- cofrinho CRUD ---
+let coEditId=null;
+$("#co-add").onclick=()=>{ coEditId=null; $("#comodal-title").textContent="Novo cofrinho"; $("#co-emoji").value="🏦"; $("#co-nome").value=""; $("#co-meta").value=""; $("#comodal").classList.remove("hidden"); };
+window.coEdit=(c)=>{ coEditId=c.id; $("#comodal-title").textContent="Editar cofrinho"; $("#co-emoji").value=c.emoji; $("#co-nome").value=c.nome; $("#co-meta").value=c.meta||""; $("#comodal").classList.remove("hidden"); };
+$("#comodal-x").onclick=$("#comodal-cancel").onclick=()=>$("#comodal").classList.add("hidden");
+$("#comodal-save").onclick=async()=>{
+  const body={nome:$("#co-nome").value.trim()||"Cofrinho", emoji:$("#co-emoji").value.trim()||"🏦", meta:parseFloat($("#co-meta").value||0)};
+  await fetch(coEditId?`/api/cofrinhos/${coEditId}`:"/api/cofrinhos",{method:coEditId?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  $("#comodal").classList.add("hidden"); toast(coEditId?"Cofrinho atualizado":"Cofrinho criado"); loadCofrinho();
+};
+window.coAskDel=(id,nome)=>{ delMode="cofre"; delId=id; $("#confirm-txt").innerHTML=`Excluir o cofrinho <b>“${nome}”</b>? Os aportes/resgates lançados também serão removidos.`; $("#confirm").classList.remove("hidden"); };
+
+// --- movimento ---
+let moCofreId=null;
+const MO_HINT={Aporte:"Sai da conta corrente (conta como despesa do mês).",Resgate:"Volta pra conta corrente (conta como receita do mês).",Rendimento:"Só valoriza o cofrinho; não mexe no fluxo do mês."};
+function moSetTipo(v){ $$("#mo-tipo button").forEach(b=>b.classList.toggle("active",b.dataset.v===v)); $("#mo-hint").textContent=MO_HINT[v]; }
+window.coMov=(id,tipo)=>{ moCofreId=id; moSetTipo(tipo); $("#momodal-title").textContent=tipo; $("#mo-valor").value=""; $("#mo-obs").value=""; $("#momodal").classList.remove("hidden"); };
+$$("#mo-tipo button").forEach(b=>b.onclick=()=>moSetTipo(b.dataset.v));
+$("#momodal-x").onclick=$("#momodal-cancel").onclick=()=>$("#momodal").classList.add("hidden");
+$("#momodal-save").onclick=async()=>{
+  const body={tipo:$("#mo-tipo .active").dataset.v, valor:parseFloat($("#mo-valor").value||0), usuario:$("#mo-usuario").value, obs:$("#mo-obs").value.trim()};
+  await fetch(`/api/cofrinhos/${moCofreId}/mov`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  $("#momodal").classList.add("hidden"); toast("Movimento registrado"); loadCofrinho(); loadOverview();
+};
+window.coMovDel=async(id)=>{ await fetch(`/api/cofrinhos/mov/${id}`,{method:"DELETE"}); toast("Movimento removido"); loadCofrinho(); loadOverview(); };
+
+// --- bens ---
+let bemEditId=null;
+$("#bem-add").onclick=()=>{ bemEditId=null; $("#bemmodal-title").textContent="Novo bem"; $("#bem-nome").value=""; $("#bem-categoria").value=""; $("#bem-valor").value=""; $("#bemmodal").classList.remove("hidden"); };
+window.bemEdit=(b)=>{ bemEditId=b.id; $("#bemmodal-title").textContent="Atualizar bem"; $("#bem-nome").value=b.nome; $("#bem-categoria").value=b.categoria||""; $("#bem-valor").value=b.valor; $("#bemmodal").classList.remove("hidden"); };
+$("#bemmodal-x").onclick=$("#bemmodal-cancel").onclick=()=>$("#bemmodal").classList.add("hidden");
+$("#bemmodal-save").onclick=async()=>{
+  const body={nome:$("#bem-nome").value.trim()||"Bem", categoria:$("#bem-categoria").value.trim()||"Outros", valor:parseFloat($("#bem-valor").value||0)};
+  await fetch(bemEditId?`/api/bens/${bemEditId}`:"/api/bens",{method:bemEditId?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  $("#bemmodal").classList.add("hidden"); toast(bemEditId?"Bem atualizado":"Bem adicionado"); loadCofrinho();
+};
+window.bemAskDel=(id,nome)=>{ delMode="bem"; delId=id; $("#confirm-txt").innerHTML=`Excluir o bem <b>“${nome}”</b>?`; $("#confirm").classList.remove("hidden"); };
+
+// --- inflação ---
+$("#infl-edit").onclick=()=>{ const n=new Date(); $("#infl-mes").value=n.getMonth()+1; $("#infl-ano").value=n.getFullYear(); $("#infl-pct").value=""; $("#inflmodal").classList.remove("hidden"); };
+$("#inflmodal-x").onclick=$("#inflmodal-cancel").onclick=()=>$("#inflmodal").classList.add("hidden");
+$("#inflmodal-save").onclick=async()=>{
+  const body={mes:parseInt($("#infl-mes").value||1), ano:parseInt($("#infl-ano").value||2026), pct:parseFloat($("#infl-pct").value||0)};
+  await fetch("/api/inflacao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  $("#inflmodal").classList.add("hidden"); toast("IPCA salvo"); loadCofrinho();
+};
 
 // ===== Gráficos =====
 let CH={};
