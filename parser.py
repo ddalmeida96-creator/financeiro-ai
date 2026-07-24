@@ -1,5 +1,5 @@
 import re
-from categorias import CATEGORIAS, RECEITAS
+from catstore import get_maps
 
 
 def _valor(texto):
@@ -16,6 +16,7 @@ def _valor(texto):
 
 
 def parse(texto):
+    CATEGORIAS, RECEITAS = get_maps()
     t = texto.lower().strip()
     achou = _valor(t)
     if not achou:

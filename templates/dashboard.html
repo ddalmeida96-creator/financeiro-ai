@@ -1,96 +1,179 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Financeiro do Casal</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#FCFBF8">
+<title>Patrimônio · Família</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
-  <div class="wrap">
-    <h1>💜 Financeiro do Casal</h1>
-    <p class="sub">Resumo do mês atual</p>
-
-    <div class="cards">
-      <div class="card">
-        <span class="label">Receitas</span>
-        <span class="value green">{{ receitas }}</span>
-      </div>
-      <div class="card">
-        <span class="label">Despesas</span>
-        <span class="value red">{{ despesas }}</span>
-      </div>
-      <div class="card">
-        <span class="label">Saldo</span>
-        <span class="value {{ 'green' if saldo_positivo else 'red' }}">{{ saldo }}</span>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">✦</div>
+      <div class="brand-txt">
+        <span class="brand-name">Patrimônio</span>
+        <span class="brand-sub">Família</span>
       </div>
     </div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="inicio"><span class="ni">◇</span> Início</button>
+      <button class="nav-item" data-view="lancamentos"><span class="ni">≡</span> Lançamentos</button>
+      <button class="nav-item" data-view="historico"><span class="ni">⏱</span> Histórico</button>
+      <button class="nav-item" data-view="graficos"><span class="ni">◔</span> Gráficos</button>
+      <button class="nav-item" data-view="categorias"><span class="ni">❋</span> Categorias</button>
+    </nav>
+    <div class="sidebar-foot" id="side-members"></div>
+  </aside>
 
-    <h2>Por pessoa</h2>
-    <div class="cards">
-      {% for user, v in por_usuario.items() %}
-      <div class="card">
-        <span class="label">{{ user }}</span>
-        <span class="value green small">{{ v.Receita }}</span>
-        <span class="value red small">{{ v.Despesa }}</span>
+  <!-- MAIN -->
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 class="page-title" id="page-title">Início</h1>
+        <p class="page-sub" id="page-sub">Visão geral do mês</p>
       </div>
-      {% else %}
-      <div class="card"><span class="label">Sem lançamentos ainda</span></div>
-      {% endfor %}
-    </div>
+      <div class="topbar-right">
+        <div class="avatars" id="top-avatars"></div>
+        <button class="btn-primary" id="btn-novo">+ Novo lançamento</button>
+      </div>
+    </header>
 
-    <div class="charts">
-      <div class="panel"><h2>Despesas por categoria</h2><canvas id="catChart"></canvas></div>
-      <div class="panel"><h2>Mensal</h2><canvas id="mesChart"></canvas></div>
-    </div>
+    <!-- INÍCIO -->
+    <section class="view" id="view-inicio">
+      <div class="stat-grid" id="stat-grid"></div>
+      <div class="two-col">
+        <div class="card people-card">
+          <div class="card-head"><h3>Resumo individual</h3><span class="tag" id="ref-mes"></span></div>
+          <div class="people" id="people"></div>
+        </div>
+        <div class="card highlight-card">
+          <div class="card-head"><h3>Destaques do mês</h3></div>
+          <div class="highlights" id="highlights"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Últimos lançamentos</h3>
+          <button class="link-btn" data-view="lancamentos">Ver todos →</button></div>
+        <div class="mini-list" id="mini-list"></div>
+      </div>
+    </section>
 
-    <h2>Últimos lançamentos</h2>
-    <div class="panel">
-      <table>
-        <thead><tr><th>Data</th><th>Pessoa</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead>
-        <tbody>
-          {% for l in ultimos %}
-          <tr>
-            <td>{{ l.data.strftime('%d/%m') }}</td>
-            <td>{{ l.usuario }}</td>
-            <td>{{ l.descricao }}</td>
-            <td>{{ l.categoria }} / {{ l.subcategoria }}</td>
-            <td class="{{ 'green' if l.tipo == 'Receita' else 'red' }}">{{ brl(l.valor) }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="5" class="muted">Nenhum lançamento.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <!-- LANÇAMENTOS -->
+    <section class="view hidden" id="view-lancamentos">
+      <div class="toolbar">
+        <div class="search"><span>⌕</span><input id="l-search" placeholder="Pesquisar descrição ou categoria…"></div>
+        <select id="l-tipo"><option value="">Tipo · todos</option><option>Receita</option><option>Despesa</option></select>
+        <select id="l-usuario"><option value="">Pessoa · todas</option></select>
+        <select id="l-categoria"><option value="">Categoria · todas</option></select>
+      </div>
+      <div class="card table-card"><div class="table-wrap"><table class="tbl" id="l-table"></table></div>
+        <div class="empty hidden" id="l-empty"></div></div>
+    </section>
+
+    <!-- HISTÓRICO -->
+    <section class="view hidden" id="view-historico">
+      <div class="toolbar wrap">
+        <div class="search"><span>⌕</span><input id="h-search" placeholder="Busca instantânea…"></div>
+        <input type="date" id="h-start"><input type="date" id="h-end">
+        <select id="h-tipo"><option value="">Tipo · todos</option><option>Receita</option><option>Despesa</option></select>
+        <select id="h-usuario"><option value="">Pessoa · todas</option></select>
+        <select id="h-categoria"><option value="">Categoria · todas</option></select>
+      </div>
+      <div class="card table-card"><div class="table-wrap"><table class="tbl" id="h-table"></table></div>
+        <div class="empty hidden" id="h-empty"></div></div>
+    </section>
+
+    <!-- GRÁFICOS -->
+    <section class="view hidden" id="view-graficos">
+      <div class="chart-grid">
+        <div class="card chart-card"><h3>Receitas × Despesas</h3><div class="cbox"><canvas id="c-rxd"></canvas></div></div>
+        <div class="card chart-card"><h3>Distribuição por categoria</h3><div class="cbox"><canvas id="c-cat"></canvas></div></div>
+        <div class="card chart-card wide"><h3>Evolução mensal</h3><div class="cbox tall"><canvas id="c-mensal"></canvas></div></div>
+        <div class="card chart-card"><h3>Marido × Esposa</h3><div class="cbox"><canvas id="c-users"></canvas></div></div>
+        <div class="card chart-card"><h3>Maiores gastos por categoria</h3><div class="cbox"><canvas id="c-top"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- CATEGORIAS -->
+    <section class="view hidden" id="view-categorias">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-head"><h3>Despesas · palavras-chave</h3>
+            <button class="btn-soft" id="add-desp">+ Adicionar</button></div>
+          <div class="cat-list" id="cat-desp"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Receitas · palavras-chave</h3>
+            <button class="btn-soft" id="add-rec">+ Adicionar</button></div>
+          <div class="cat-list" id="cat-rec"></div>
+        </div>
+      </div>
+      <p class="hint">Quando o bot receber uma mensagem contendo a palavra-chave, ele classifica automaticamente com a categoria definida aqui.</p>
+    </section>
+  </main>
+</div>
+
+<!-- MODAL LANÇAMENTO -->
+<div class="modal-bg hidden" id="modal">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modal-title">Novo lançamento</h3><button class="x" id="modal-x">×</button></div>
+    <div class="modal-body">
+      <label>Tipo<div class="seg" id="f-tipo"><button data-v="Despesa" class="active">Despesa</button><button data-v="Receita">Receita</button></div></label>
+      <label>Descrição<input id="f-descricao" placeholder="Ex.: Mercado Condor"></label>
+      <div class="row2">
+        <label>Valor (R$)<input id="f-valor" type="number" step="0.01" placeholder="0,00"></label>
+        <label>Data<input id="f-data" type="date"></label>
+      </div>
+      <div class="row2">
+        <label>Categoria<input id="f-categoria" placeholder="Alimentação"></label>
+        <label>Subcategoria<input id="f-subcategoria" placeholder="Supermercado"></label>
+      </div>
+      <label>Pessoa<select id="f-usuario"></select></label>
     </div>
+    <div class="modal-foot"><button class="btn-ghost" id="modal-cancel">Cancelar</button><button class="btn-primary" id="modal-save">Salvar</button></div>
   </div>
+</div>
 
-  <script>
-    const green = "#00d17a", red = "#ff5c5c", grid = "#2a2a2e", txt = "#a1a1aa";
-    Chart.defaults.color = txt; Chart.defaults.borderColor = grid;
+<!-- MODAL DUPLICAR -->
+<div class="modal-bg hidden" id="dup">
+  <div class="modal small">
+    <div class="modal-head"><h3>Duplicar lançamento</h3><button class="x" id="dup-x">×</button></div>
+    <div class="modal-body"><p class="dup-info" id="dup-info"></p>
+      <label>Novo valor (R$)<input id="dup-valor" type="number" step="0.01"></label></div>
+    <div class="modal-foot"><button class="btn-ghost" id="dup-cancel">Cancelar</button><button class="btn-primary" id="dup-save">Duplicar</button></div>
+  </div>
+</div>
 
-    new Chart(document.getElementById("catChart"), {
-      type: "doughnut",
-      data: {
-        labels: {{ cat_labels|tojson }},
-        datasets: [{ data: {{ cat_values|tojson }},
-          backgroundColor: ["#a855f7","#00d17a","#ff5c5c","#38bdf8","#fbbf24","#f472b6","#94a3b8"] }]
-      },
-      options: { plugins: { legend: { position: "bottom" } } }
-    });
+<!-- MODAL CATEGORIA -->
+<div class="modal-bg hidden" id="cmodal">
+  <div class="modal small">
+    <div class="modal-head"><h3 id="cmodal-title">Palavra-chave</h3><button class="x" id="cmodal-x">×</button></div>
+    <div class="modal-body">
+      <label>Palavra-chave<input id="c-kw" placeholder="ex.: mercado"></label>
+      <label id="c-cat-wrap">Categoria<input id="c-cat" placeholder="Alimentação"></label>
+      <label>Subcategoria<input id="c-sub" placeholder="Supermercado"></label>
+    </div>
+    <div class="modal-foot"><button class="btn-ghost" id="cmodal-cancel">Cancelar</button><button class="btn-primary" id="cmodal-save">Salvar</button></div>
+  </div>
+</div>
 
-    new Chart(document.getElementById("mesChart"), {
-      type: "bar",
-      data: {
-        labels: {{ labels_m|tojson }},
-        datasets: [
-          { label: "Receitas", data: {{ rec_m|tojson }}, backgroundColor: green },
-          { label: "Despesas", data: {{ desp_m|tojson }}, backgroundColor: red }
-        ]
-      },
-      options: { scales: { y: { beginAtZero: true } } }
-    });
-  </script>
+<!-- CONFIRM -->
+<div class="modal-bg hidden" id="confirm">
+  <div class="modal small">
+    <div class="modal-head"><h3>Confirmar exclusão</h3></div>
+    <div class="modal-body"><p id="confirm-txt">Tem certeza?</p></div>
+    <div class="modal-foot"><button class="btn-ghost" id="confirm-no">Cancelar</button><button class="btn-danger" id="confirm-yes">Excluir</button></div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+<script src="/static/app.js"></script>
 </body>
 </html>
