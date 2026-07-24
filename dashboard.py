@@ -296,12 +296,15 @@ def cats():
 @app.post("/api/categorias/despesa")
 def cat_desp_add(data: dict = Body(...)):
     d = catstore.load()
-    kw = (data.get("kw") or "").strip().lower()
-    if not kw:
+    kws = [k.strip().lower() for k in (data.get("kw") or "").split(",") if k.strip()]
+    if not kws:
         return JSONResponse({"erro": "palavra-chave vazia"}, status_code=400)
-    if data.get("kw_old") and data["kw_old"] != kw:
+    if data.get("kw_old") and data["kw_old"] not in kws:
         d["despesas"].pop(data["kw_old"], None)
-    d["despesas"][kw] = [data.get("categoria") or "Outros", data.get("subcategoria") or "Outros"]
+    cat = data.get("categoria") or "Outros"
+    sub = data.get("subcategoria") or "Outros"
+    for kw in kws:
+        d["despesas"][kw] = [cat, sub]
     catstore.save(d)
     return {"ok": True}
 
@@ -317,12 +320,14 @@ def cat_desp_del(kw: str):
 @app.post("/api/categorias/receita")
 def cat_rec_add(data: dict = Body(...)):
     d = catstore.load()
-    kw = (data.get("kw") or "").strip().lower()
-    if not kw:
+    kws = [k.strip().lower() for k in (data.get("kw") or "").split(",") if k.strip()]
+    if not kws:
         return JSONResponse({"erro": "palavra-chave vazia"}, status_code=400)
-    if data.get("kw_old") and data["kw_old"] != kw:
+    if data.get("kw_old") and data["kw_old"] not in kws:
         d["receitas"].pop(data["kw_old"], None)
-    d["receitas"][kw] = data.get("subcategoria") or "Outros"
+    sub = data.get("subcategoria") or "Outros"
+    for kw in kws:
+        d["receitas"][kw] = sub
     catstore.save(d)
     return {"ok": True}
 
