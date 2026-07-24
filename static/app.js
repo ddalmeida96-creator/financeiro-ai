@@ -1,8 +1,11 @@
 // ===== Perfis: mapeia nome do Telegram -> avatar. (preenchido após confirmar nomes) =====
 // chave = primeiro nome no Telegram (minúsculo) -> avatar + nome de exibição
 const PERFIS = {
-  "diego":  {av:"marido", nome:"Diego"},
-  "mateus": {av:"esposa", nome:"Juliana"},
+  "d":       {av:"marido", nome:"Diego"},
+  "diego":   {av:"marido", nome:"Diego"},
+  "j":       {av:"esposa", nome:"Juliana"},
+  "juliana": {av:"esposa", nome:"Juliana"},
+  "mateus":  {av:"esposa", nome:"Juliana"},
 };
 const dispName = n => { const k=(n||"").trim().toLowerCase(); return (PERFIS[k]&&PERFIS[k].nome) || n; };
 const AV_CACHE = {};
