@@ -23,9 +23,11 @@ def parse(texto):
         return None
     valor, bruto = achou
 
-    # Descrição = texto sem o número final.
-    descricao = re.sub(r"\d[\d.,]*", "", texto).strip()
-    descricao = re.sub(r"\b(por|reais|r\$|no|na|de|um|uma)\b", "", descricao, flags=re.I)
+    # Descrição = texto sem número, sem R$/$, sem palavras de ligação e sem pontuação solta.
+    descricao = re.sub(r"\d[\d.,]*", "", texto)
+    descricao = re.sub(r"r\$|\$", "", descricao, flags=re.I)
+    descricao = re.sub(r"\b(por|reais|real|no|na|de|um|uma)\b", "", descricao, flags=re.I)
+    descricao = re.sub(r"[,;:.!?]+", " ", descricao)
     descricao = re.sub(r"\s+", " ", descricao).strip().capitalize() or "Lançamento"
 
     # Receita?
