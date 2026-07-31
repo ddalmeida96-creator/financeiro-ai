@@ -1,14 +1,66 @@
 import calendar
+import os
 from datetime import datetime
+import httpx
 from sqlalchemy import extract, func
 from telegram import Update
 from telegram.ext import ContextTypes
 from database import SessionLocal, Lancamento, Fixa, Cofrinho, CofrinhoMov, Bem
 from parser import parse
 
+GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+
 
 def _brl(v):
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+async def _transcrever(audio_bytes, filename="audio.ogg"):
+    """Manda o áudio pro Whisper da Groq. Retorna (texto, erro)."""
+    key = os.getenv("GROQ_API_KEY")
+    if not key:
+        return None, "⚠️ Áudio ainda não configurado (falta GROQ_API_KEY no servidor)."
+    try:
+        async with httpx.AsyncClient(timeout=60) as cli:
+            r = await cli.post(
+                GROQ_URL,
+                headers={"Authorization": f"Bearer {key}"},
+                files={"file": (filename, audio_bytes, "audio/ogg")},
+                data={"model": "whisper-large-v3-turbo", "language": "pt",
+                      "response_format": "json"},
+            )
+        if r.status_code != 200:
+            return None, f"❌ Erro na transcrição ({r.status_code})."
+        return (r.json().get("text") or "").strip(), None
+    except Exception as e:
+        return None, f"❌ Falha ao transcrever o áudio: {e}"
+
+
+async def _salvar_lancamento(update: Update, texto: str):
+    r = parse(texto)
+    if not r:
+        await update.message.reply_text(
+            f'❌ Não entendi "{texto}". Envie algo como: Pizza 89')
+        return
+    usuario = update.effective_user.first_name or str(update.effective_user.id)
+    db = SessionLocal()
+    lanc = Lancamento(
+        usuario=usuario, tipo=r["tipo"], descricao=r["descricao"],
+        categoria=r["categoria"], subcategoria=r["subcategoria"], valor=r["valor"],
+    )
+    db.add(lanc)
+    db.commit()
+    lid = lanc.id
+    db.close()
+    await update.message.reply_text(
+        "✅ Lançamento registrado\n"
+        f"Tipo: {r['tipo']}\n"
+        f"Descrição: {r['descricao']}\n"
+        f"Categoria: {r['categoria']}\n"
+        f"Subcategoria: {r['subcategoria']}\n"
+        f"Valor: {_brl(r['valor'])}\n"
+        f"Nº: {lid}  (apagar: /apagar {lid})"
+    )
 
 
 def _cofre_saldo(db, cid):
@@ -27,37 +79,25 @@ def _lanc_do_mes(db, fid, mes, ano):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texto = update.message.text
-    r = parse(texto)
-    if not r:
-        await update.message.reply_text("❌ Não entendi. Envie algo como: Pizza 89")
+    await _salvar_lancamento(update, update.message.text)
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    media = msg.voice or msg.audio
+    if not media:
         return
-
-    usuario = update.effective_user.first_name or str(update.effective_user.id)
-
-    db = SessionLocal()
-    lanc = Lancamento(
-        usuario=usuario,
-        tipo=r["tipo"],
-        descricao=r["descricao"],
-        categoria=r["categoria"],
-        subcategoria=r["subcategoria"],
-        valor=r["valor"],
-    )
-    db.add(lanc)
-    db.commit()
-    lid = lanc.id
-    db.close()
-
-    await update.message.reply_text(
-        "✅ Lançamento registrado\n"
-        f"Tipo: {r['tipo']}\n"
-        f"Descrição: {r['descricao']}\n"
-        f"Categoria: {r['categoria']}\n"
-        f"Subcategoria: {r['subcategoria']}\n"
-        f"Valor: {_brl(r['valor'])}\n"
-        f"Nº: {lid}  (apagar: /apagar {lid})"
-    )
+    tg_file = await media.get_file()
+    audio = bytes(await tg_file.download_as_bytearray())
+    texto, erro = await _transcrever(audio)
+    if erro:
+        await msg.reply_text(erro)
+        return
+    if not texto:
+        await msg.reply_text("❌ Não consegui entender o áudio. Tenta de novo?")
+        return
+    await msg.reply_text(f'🎙️ Entendi: "{texto}"')
+    await _salvar_lancamento(update, texto)
 
 
 async def ultimos(update: Update, context: ContextTypes.DEFAULT_TYPE):

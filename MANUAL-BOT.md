@@ -13,6 +13,10 @@ Só mandar a mensagem, sem comando. O bot entende e lança sozinho.
 
 Ele responde com o resumo (tipo, categoria, valor) e o **número** do lançamento, pra você poder apagar depois.
 
+## Registrar por áudio 🎙️
+
+Manda uma mensagem de voz falando o gasto, tipo "pizza oitenta e nove" ou "mercado duzentos e quarenta". O bot transcreve, mostra o que entendeu e lança direto — igual ao texto. Se transcrever errado, é só usar `/apagar`.
+
 ## Comandos
 
 | Comando | O que faz |
