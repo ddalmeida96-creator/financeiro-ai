@@ -17,6 +17,16 @@ Ele responde com o resumo (tipo, categoria, valor) e o **número** do lançament
 
 Manda uma mensagem de voz falando o gasto, tipo "pizza oitenta e nove" ou "mercado duzentos e quarenta". O bot transcreve, mostra o que entendeu e lança direto — igual ao texto. Se transcrever errado, é só usar `/apagar`.
 
+## Lista de compras 🛒
+
+Comece a mensagem (texto **ou** áudio) com **"lista de compras"** e o bot põe os itens na lista em vez de lançar como gasto.
+
+- `lista de compras leite, ovos, pão` → adiciona os 3 itens
+- `lista de compra café e açúcar` → separa por vírgula ou "e"
+- `lista de compras` (sozinho) → o bot **responde com a lista atual**
+
+A lista também aparece na aba **Compras** do dashboard, onde dá pra marcar e apagar.
+
 ## Comandos
 
 | Comando | O que faz |
@@ -27,6 +37,9 @@ Manda uma mensagem de voz falando o gasto, tipo "pizza oitenta e nove" ou "merca
 | `/pagar <nº>` | Marca uma fixa como paga/recebida (cria o lançamento do mês). Ex.: `/pagar 3` |
 | `/cofrinho` | Mostra os cofrinhos com saldo + resumo de patrimônio (conta, cofrinhos, bens, total). |
 | `/aportar <nº> <valor>` | Faz um aporte num cofrinho. Ex.: `/aportar 1 500` |
+| `/lista` | Mostra a lista de compras atual. |
+| `/comprei <nº>` | Marca um item da lista como comprado. Ex.: `/comprei 3` |
+| `/limpar` | Remove da lista os itens já comprados. |
 
 ## Dicas
 

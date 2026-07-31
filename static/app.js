@@ -37,6 +37,7 @@ const TITLES = {
   cofrinho:["Cofrinho","Investimentos, bens e inflação"],
   historico:["Histórico","Todos os lançamentos"], graficos:["Gráficos","Análise visual do casal"],
   expectativa:["Expectativa","Média do histórico e projeção"],
+  compras:["Compras","Lista de compras do casal"],
   categorias:["Categorias","Classificação automática do bot"]
 };
 function go(view){
@@ -47,6 +48,7 @@ function go(view){
   $("#page-sub").textContent=TITLES[view][1];
   if(view==="graficos") loadCharts();
   if(view==="expectativa") loadExpectativa();
+  if(view==="compras") loadCompras();
   if(view==="categorias") loadCats();
   if(view==="fixas") loadFixas();
   if(view==="cofrinho") loadCofrinho();
@@ -497,6 +499,29 @@ function mk(id,cfg){ if(CH[id])CH[id].destroy(); CH[id]=new Chart($("#"+id),cfg)
 function donut(){return{responsive:true,maintainAspectRatio:false,cutout:"66%",plugins:{legend:{position:"bottom",labels:{usePointStyle:true,padding:16,boxWidth:8}},tooltip:tt()}};}
 function axes(legend){return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:legend,position:"bottom",labels:{usePointStyle:true,padding:16,boxWidth:8}},tooltip:tt()},scales:{x:{grid:{display:false},border:{display:false}},y:{grid:{color:"#F3EFE8"},border:{display:false},ticks:{callback:v=>"R$ "+v.toLocaleString("pt-BR")}}}};}
 function tt(){return{backgroundColor:"#1D1B17",padding:12,cornerRadius:10,titleFont:{family:"Playfair Display"},callbacks:{label:c=>` ${c.dataset.label?c.dataset.label+": ":""}${fmt(c.parsed.y!=null?c.parsed.y:c.parsed)}`}};}
+
+// ===== Compras =====
+async function loadCompras(){
+  const d = await (await fetch("/api/compras")).json();
+  $("#cp-count").textContent = d.pendentes ? `${d.pendentes} pendente${d.pendentes>1?"s":""}` : "tudo comprado";
+  $("#cp-list").innerHTML = d.itens.length ? d.itens.map(c=>`
+    <div class="cp-item ${c.comprado?"done":""}">
+      <button class="cp-chk" onclick="cpToggle(${c.id})">${c.comprado?"✓":""}</button>
+      <span class="cp-txt">${c.item}</span>
+      <button class="cp-del" onclick="cpDel(${c.id})">✕</button>
+    </div>`).join("") : emptyBlock("Adicione itens ou mande “lista de compras leite, ovos” ao bot");
+}
+async function cpAdd(){
+  const inp=$("#cp-input"); const item=inp.value.trim(); if(!item) return;
+  await fetch("/api/compras",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({item})});
+  inp.value=""; inp.focus(); loadCompras();
+}
+window.cpToggle=async id=>{ await fetch(`/api/compras/${id}/toggle`,{method:"PUT"}); loadCompras(); };
+window.cpDel=async id=>{ await fetch(`/api/compras/${id}`,{method:"DELETE"}); loadCompras(); };
+async function cpLimpar(){ await fetch("/api/compras/limpar",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"}); toast("Comprados removidos"); loadCompras(); }
+$("#cp-add-btn").addEventListener("click",cpAdd);
+$("#cp-input").addEventListener("keydown",e=>{ if(e.key==="Enter") cpAdd(); });
+$("#cp-limpar").addEventListener("click",cpLimpar);
 
 // ===== Boot =====
 function refreshAll(){ loadOverview(); loadMeta().then(()=>{ loadTable("l"); if(!$("#view-historico").classList.contains("hidden")) loadTable("h"); }); }

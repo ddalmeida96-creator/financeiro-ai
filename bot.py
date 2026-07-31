@@ -1,11 +1,13 @@
 import calendar
 import os
+import re
+import unicodedata
 from datetime import datetime
 import httpx
 from sqlalchemy import extract, func
 from telegram import Update
 from telegram.ext import ContextTypes
-from database import SessionLocal, Lancamento, Fixa, Cofrinho, CofrinhoMov, Bem
+from database import SessionLocal, Lancamento, Fixa, Cofrinho, CofrinhoMov, Bem, Compra
 from parser import parse
 
 GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
@@ -63,6 +65,111 @@ async def _salvar_lancamento(update: Update, texto: str):
     )
 
 
+# ---------- LISTA DE COMPRAS ----------
+_GATILHO_RE = re.compile(r"(?i)^\s*lista\s+de\s+compras?\b[:\-–—]?\s*(.*)", re.S)
+
+
+def _norm(s):
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode()
+    return s.lower().strip()
+
+
+def _eh_lista(texto):
+    """Se a mensagem começa com 'lista de compra(s)', retorna (True, resto)."""
+    if _norm(texto).startswith("lista de compra"):
+        m = _GATILHO_RE.match(texto)
+        resto = (m.group(1) if m else "").strip(" :-–—?.\n\t")
+        return True, resto
+    return False, ""
+
+
+def _split_itens(resto):
+    if not resto:
+        return []
+    itens = []
+    for p in re.split(r"[,;\n]| e ", resto):
+        p = p.strip(" .-\t").strip()
+        if p:
+            itens.append(p[0].upper() + p[1:])
+    return itens
+
+
+async def _mostrar_lista(update: Update):
+    db = SessionLocal()
+    rows = db.query(Compra).order_by(Compra.comprado.asc(), Compra.id.asc()).all()
+    db.close()
+    if not rows:
+        await update.message.reply_text(
+            "🛒 Lista de compras vazia.\nMande: lista de compras leite, ovos, pão")
+        return
+    pend = [c for c in rows if not c.comprado]
+    done = [c for c in rows if c.comprado]
+    linhas = ["🛒 *Lista de compras*", ""]
+    for c in (pend or []):
+        linhas.append(f"#{c.id} ▫️ {c.item}")
+    if not pend:
+        linhas.append("_Nada pendente._")
+    if done:
+        linhas += ["", "_Já comprado:_"] + [f"#{c.id} ✅ {c.item}" for c in done]
+    linhas += ["", "Comprou? /comprei <nº> · limpar comprados: /limpar"]
+    await update.message.reply_text("\n".join(linhas), parse_mode="Markdown")
+
+
+async def _add_compras(update: Update, resto: str):
+    itens = _split_itens(resto)
+    if not itens:            # só "lista de compras" sem itens = pedir a lista
+        await _mostrar_lista(update)
+        return
+    usuario = update.effective_user.first_name or "Casal"
+    db = SessionLocal()
+    for it in itens:
+        db.add(Compra(item=it, comprado=False, usuario=usuario))
+    db.commit()
+    pend = db.query(Compra).filter(Compra.comprado == False).count()
+    db.close()
+    await update.message.reply_text(
+        f"🛒 Adicionado: {', '.join(itens)}\nPendentes na lista: {pend}  (ver: /lista)")
+
+
+async def _rota(update: Update, texto: str):
+    """Decide: item de compra (gatilho) ou lançamento financeiro."""
+    eh, resto = _eh_lista(texto)
+    if eh:
+        await _add_compras(update, resto)
+        return
+    await _salvar_lancamento(update, texto)
+
+
+async def lista(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _mostrar_lista(update)
+
+
+async def comprei(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Use: /comprei 3  (o número do item em /lista)")
+        return
+    cid = int(context.args[0])
+    db = SessionLocal()
+    c = db.get(Compra, cid)
+    if not c:
+        db.close()
+        await update.message.reply_text(f"Item #{cid} não encontrado. Veja /lista")
+        return
+    c.comprado = True
+    item = c.item
+    db.commit()
+    db.close()
+    await update.message.reply_text(f"✅ '{item}' marcado como comprado. (/limpar remove os comprados)")
+
+
+async def limpar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = SessionLocal()
+    n = db.query(Compra).filter(Compra.comprado == True).delete(synchronize_session=False)
+    db.commit()
+    db.close()
+    await update.message.reply_text(f"🧹 {n} item(ns) comprado(s) removido(s) da lista.")
+
+
 def _cofre_saldo(db, cid):
     def s(tipo):
         return db.query(func.coalesce(func.sum(CofrinhoMov.valor), 0.0)).filter(
@@ -79,7 +186,7 @@ def _lanc_do_mes(db, fid, mes, ano):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _salvar_lancamento(update, update.message.text)
+    await _rota(update, update.message.text)
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -97,7 +204,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("❌ Não consegui entender o áudio. Tenta de novo?")
         return
     await msg.reply_text(f'🎙️ Entendi: "{texto}"')
-    await _salvar_lancamento(update, texto)
+    await _rota(update, texto)
 
 
 async def ultimos(update: Update, context: ContextTypes.DEFAULT_TYPE):

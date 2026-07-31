@@ -224,6 +224,19 @@ select:focus,input:focus{outline:none;border-color:var(--gold-soft)}
 .ex-cat-val small{color:var(--muted);font-weight:400;margin-left:4px}
 .ex-cat-bar{height:8px;background:var(--line2);border-radius:20px;overflow:hidden}
 .ex-cat-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-soft));border-radius:20px}
+.cp-add{display:flex;gap:8px;margin-bottom:16px}
+.cp-add input{flex:1;padding:11px 14px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-family:inherit;background:#fff}
+.cp-add input:focus{outline:none;border-color:var(--gold)}
+.cp-list{display:flex;flex-direction:column;gap:8px}
+.cp-item{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--line2);border-radius:12px;background:#fff}
+.cp-chk{width:24px;height:24px;flex:none;border:2px solid var(--line);border-radius:7px;color:var(--green);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:.15s}
+.cp-chk:hover{border-color:var(--green)}
+.cp-item.done .cp-chk{background:var(--green);border-color:var(--green);color:#fff}
+.cp-txt{flex:1;font-size:14.5px}
+.cp-item.done .cp-txt{text-decoration:line-through;color:var(--muted)}
+.cp-del{width:26px;height:26px;flex:none;color:var(--muted);font-size:13px;border-radius:8px;transition:.15s}
+.cp-del:hover{background:var(--gold-tint);color:var(--red)}
+.cp-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;flex-wrap:wrap}
 .co-btns{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
 .co-movs{margin-top:12px;border-top:1px solid var(--line2);padding-top:8px}
 .co-mov{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13px}

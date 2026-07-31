@@ -27,6 +27,7 @@
       <button class="nav-item" data-view="lancamentos"><span class="ni">≡</span> Lançamentos</button>
       <button class="nav-item" data-view="fixas"><span class="ni">↻</span> Fixas</button>
       <button class="nav-item" data-view="cofrinho"><span class="ni">◈</span> Cofrinho</button>
+      <button class="nav-item" data-view="compras"><span class="ni">🛒</span> Compras</button>
       <button class="nav-item" data-view="historico"><span class="ni">⏱</span> Histórico</button>
       <button class="nav-item" data-view="expectativa"><span class="ni">◑</span> Expectativa</button>
       <button class="nav-item" data-view="graficos"><span class="ni">◔</span> Gráficos</button>
@@ -110,6 +111,22 @@
         <div class="card-head"><h3>Inflação (IPCA)</h3><button class="btn-soft" id="infl-edit">Informar mês</button></div>
         <div id="infl-box"></div>
         <p class="hint">O rendimento dos cofrinhos comparado ao IPCA mostra se o dinheiro ganhou ou perdeu poder de compra.</p>
+      </div>
+    </section>
+
+    <!-- COMPRAS -->
+    <section class="view hidden" id="view-compras">
+      <div class="card">
+        <div class="card-head"><h3>Lista de compras</h3><span class="tag" id="cp-count"></span></div>
+        <div class="cp-add">
+          <input id="cp-input" placeholder="Adicionar item (ex.: leite, ovos, pão)…">
+          <button class="btn-primary" id="cp-add-btn">+ Adicionar</button>
+        </div>
+        <div class="cp-list" id="cp-list"></div>
+        <div class="cp-foot">
+          <button class="btn-soft" id="cp-limpar">Limpar comprados</button>
+          <span class="hint" style="margin:0">Pelo bot: mande "lista de compras leite, ovos" (texto ou áudio).</span>
+        </div>
       </div>
     </section>
 

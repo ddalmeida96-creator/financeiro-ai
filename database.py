@@ -83,6 +83,15 @@ class Inflacao(Base):
     pct = Column(Float)            # variação IPCA do mês (%)
 
 
+class Compra(Base):
+    __tablename__ = "compras"
+    id = Column(Integer, primary_key=True)
+    item = Column(String)
+    comprado = Column(Boolean, default=False)
+    usuario = Column(String)
+    data = Column(DateTime, default=datetime.now)
+
+
 # IPCA mensal (%) — semente inicial; editável no dashboard
 _IPCA_SEED = [
     (2025, 12, 0.33),

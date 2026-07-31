@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func, extract, or_
 from datetime import datetime
-from database import SessionLocal, Lancamento, Fixa, Cofrinho, CofrinhoMov, Bem, BemSnapshot, Inflacao
+from database import SessionLocal, Lancamento, Fixa, Cofrinho, CofrinhoMov, Bem, BemSnapshot, Inflacao, Compra
 import catstore
 
 app = FastAPI()
@@ -829,3 +829,76 @@ def expectativa():
     db.close()
 
     return {"serie": serie, "media": media, "categorias": categorias}
+
+
+# ---------- LISTA DE COMPRAS ----------
+def _compra_dict(c):
+    return {
+        "id": c.id,
+        "item": c.item,
+        "comprado": bool(c.comprado),
+        "usuario": c.usuario,
+        "data": c.data.isoformat() if c.data else None,
+    }
+
+
+@app.get("/api/compras")
+def compras_listar():
+    db = SessionLocal()
+    rows = db.query(Compra).order_by(Compra.comprado.asc(), Compra.id.asc()).all()
+    itens = [_compra_dict(c) for c in rows]
+    db.close()
+    pendentes = sum(1 for i in itens if not i["comprado"])
+    return {"itens": itens, "pendentes": pendentes, "comprados": len(itens) - pendentes}
+
+
+@app.post("/api/compras")
+def compra_criar(data: dict = Body(...)):
+    nome = (data.get("item") or "").strip()
+    if not nome:
+        return JSONResponse({"erro": "item vazio"}, status_code=400)
+    db = SessionLocal()
+    c = Compra(item=nome, comprado=False, usuario=data.get("usuario") or "—")
+    db.add(c)
+    db.commit()
+    r = _compra_dict(c)
+    db.close()
+    return r
+
+
+@app.put("/api/compras/{cid}/toggle")
+def compra_toggle(cid: int):
+    db = SessionLocal()
+    c = db.get(Compra, cid)
+    if not c:
+        db.close()
+        return JSONResponse({"erro": "não encontrado"}, status_code=404)
+    c.comprado = not bool(c.comprado)
+    db.commit()
+    r = _compra_dict(c)
+    db.close()
+    return r
+
+
+@app.delete("/api/compras/{cid}")
+def compra_apagar(cid: int):
+    db = SessionLocal()
+    c = db.get(Compra, cid)
+    if c:
+        db.delete(c)
+        db.commit()
+    db.close()
+    return {"ok": True}
+
+
+@app.post("/api/compras/limpar")
+def compras_limpar(data: dict = Body(default={})):
+    # tudo=True apaga a lista inteira; senão só os itens já comprados
+    db = SessionLocal()
+    q = db.query(Compra)
+    if not (data or {}).get("tudo"):
+        q = q.filter(Compra.comprado == True)
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    db.close()
+    return {"ok": True, "removidos": n}
