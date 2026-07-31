@@ -108,7 +108,36 @@ def _seed_inflacao():
     db.close()
 
 
+def _seed_historico():
+    import hist_seed
+    db = SessionLocal()
+    # Importa o histórico da planilha como lançamentos reais (datados).
+    # Guard: só importa se ainda não houver nada antes de jul/2025.
+    ja_tem = db.query(Lancamento).filter(Lancamento.data < datetime(2025, 7, 1)).count()
+    if ja_tem == 0:
+        for (ano, mes), valor in hist_seed.RENDA.items():
+            db.add(Lancamento(
+                data=datetime(ano, mes, 15), usuario="Casal", tipo="Receita",
+                descricao="Renda líquida", categoria="Renda",
+                subcategoria="Renda líquida", valor=valor))
+        for ano, mes, grupo, nome, valor in hist_seed.GASTOS:
+            db.add(Lancamento(
+                data=datetime(ano, mes, 15), usuario="Casal", tipo="Despesa",
+                descricao=nome, categoria=grupo, subcategoria=nome, valor=valor))
+        db.commit()
+    # Fixas recorrentes (idempotente: só cria se não existir a descrição)
+    existentes = {f.descricao for f in db.query(Fixa).all()}
+    for descricao, categoria, valor, dia in hist_seed.FIXAS:
+        if descricao not in existentes:
+            db.add(Fixa(tipo="Despesa", descricao=descricao, categoria=categoria,
+                        subcategoria=descricao, valor=valor, dia=dia,
+                        usuario="Casal", ativo=True))
+    db.commit()
+    db.close()
+
+
 def init_db():
     Base.metadata.create_all(engine)
     _migrate()
     _seed_inflacao()
+    _seed_historico()

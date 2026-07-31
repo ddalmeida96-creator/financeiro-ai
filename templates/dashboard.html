@@ -28,6 +28,7 @@
       <button class="nav-item" data-view="fixas"><span class="ni">↻</span> Fixas</button>
       <button class="nav-item" data-view="cofrinho"><span class="ni">◈</span> Cofrinho</button>
       <button class="nav-item" data-view="historico"><span class="ni">⏱</span> Histórico</button>
+      <button class="nav-item" data-view="expectativa"><span class="ni">◑</span> Expectativa</button>
       <button class="nav-item" data-view="graficos"><span class="ni">◔</span> Gráficos</button>
       <button class="nav-item" data-view="categorias"><span class="ni">❋</span> Categorias</button>
     </nav>
@@ -123,6 +124,20 @@
       </div>
       <div class="card table-card"><div class="table-wrap"><table class="tbl" id="h-table"></table></div>
         <div class="empty hidden" id="h-empty"></div></div>
+    </section>
+
+    <!-- EXPECTATIVA -->
+    <section class="view hidden" id="view-expectativa">
+      <div class="stat-grid" id="ex-stats"></div>
+      <div class="card chart-card wide">
+        <div class="card-head"><h3>Renda × despesa por mês</h3><span class="tag" id="ex-n"></span></div>
+        <div class="cbox tall"><canvas id="c-expect"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Média mensal por categoria</h3></div>
+        <div class="ex-cats" id="ex-cats"></div>
+      </div>
+      <p class="hint">Baseado no histórico importado. A média ignora o mês atual (ainda incompleto) para projetar o que esperar.</p>
     </section>
 
     <!-- GRÁFICOS -->

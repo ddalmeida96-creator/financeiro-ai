@@ -36,6 +36,7 @@ const TITLES = {
   fixas:["Fixas","Contas e receitas fixas do mês"],
   cofrinho:["Cofrinho","Investimentos, bens e inflação"],
   historico:["Histórico","Todos os lançamentos"], graficos:["Gráficos","Análise visual do casal"],
+  expectativa:["Expectativa","Média do histórico e projeção"],
   categorias:["Categorias","Classificação automática do bot"]
 };
 function go(view){
@@ -45,6 +46,7 @@ function go(view){
   $("#page-title").textContent=TITLES[view][0];
   $("#page-sub").textContent=TITLES[view][1];
   if(view==="graficos") loadCharts();
+  if(view==="expectativa") loadExpectativa();
   if(view==="categorias") loadCats();
   if(view==="fixas") loadFixas();
   if(view==="cofrinho") loadCofrinho();
@@ -441,6 +443,35 @@ $("#inflmodal-save").onclick=async()=>{
   await fetch("/api/inflacao",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   $("#inflmodal").classList.add("hidden"); toast("IPCA salvo"); loadCofrinho();
 };
+
+// ===== Expectativa =====
+async function loadExpectativa(){
+  const d = await (await fetch("/api/expectativa")).json();
+  const m = d.media;
+  $("#ex-n").textContent = m.n ? `${m.n} ${m.n===1?"mês":"meses"} de histórico` : "sem histórico";
+  const saldoCls = m.saldo>=0?"pos":"neg";
+  $("#ex-stats").innerHTML = `
+    <div class="stat"><span class="lbl">Renda média/mês</span><div class="ic green">↑</div><div class="val">${fmt(m.renda)}</div><div class="foot">Esperado por mês</div></div>
+    <div class="stat"><span class="lbl">Despesa média/mês</span><div class="ic red">↓</div><div class="val">${fmt(m.despesa)}</div><div class="foot">Esperado por mês</div></div>
+    <div class="stat ${saldoCls}"><span class="lbl">Sobra média/mês</span><div class="ic gold">≈</div><div class="val">${fmt(m.saldo)}</div><div class="foot">Renda − despesa</div></div>
+    <div class="stat ${saldoCls}"><span class="lbl">Projeção 12 meses</span><div class="ic gold">✦</div><div class="val">${fmt(m.saldo*12)}</div><div class="foot">Sobra média × 12</div></div>`;
+
+  const cats = d.categorias || [];
+  const maxc = cats.reduce((a,c)=>Math.max(a,c.media),0) || 1;
+  $("#ex-cats").innerHTML = cats.length ? cats.map(c=>`
+    <div class="ex-cat">
+      <div class="ex-cat-top"><span class="ex-cat-nome">${c.categoria}</span>
+        <span class="ex-cat-val">${fmt(c.media)}<small>/mês · ${c.pct}%</small></span></div>
+      <div class="ex-cat-bar"><div class="ex-cat-fill" style="width:${Math.round(c.media/maxc*100)}%"></div></div>
+    </div>`).join("") : emptyBlock("Importe o histórico para ver as médias");
+
+  if(typeof Chart==="undefined") return;
+  if(!_chDefaults){ Chart.defaults.font.family="Inter"; Chart.defaults.color="#8B857A"; Chart.defaults.font.size=12; _chDefaults=true; }
+  const s = d.serie || [];
+  mk("c-expect",{type:"bar",data:{labels:s.map(x=>x.label),datasets:[
+    {label:"Renda",data:s.map(x=>x.renda),backgroundColor:GREEN,borderRadius:6,barThickness:16},
+    {label:"Despesa",data:s.map(x=>x.despesa),backgroundColor:RED,borderRadius:6,barThickness:16}]},options:axes(true)});
+}
 
 // ===== Gráficos =====
 let CH={};

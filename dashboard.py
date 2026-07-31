@@ -753,3 +753,79 @@ def inflacao_upsert(data: dict = Body(...)):
     db.commit()
     db.close()
     return {"ok": True}
+
+
+# ---------- EXPECTATIVA (histórico + média mensal) ----------
+@app.get("/api/expectativa")
+def expectativa():
+    db = SessionLocal()
+    agora = datetime.now()
+
+    # Agrega renda/despesa por ano-mês
+    q = db.query(
+        extract("year", Lancamento.data),
+        extract("month", Lancamento.data),
+        Lancamento.tipo,
+        func.sum(Lancamento.valor),
+    ).group_by(
+        extract("year", Lancamento.data),
+        extract("month", Lancamento.data),
+        Lancamento.tipo,
+    ).all()
+    meses = {}
+    for y, m, tipo, total in q:
+        if y is None or m is None:
+            continue
+        key = (int(y), int(m))
+        meses.setdefault(key, {"Receita": 0.0, "Despesa": 0.0})
+        meses[key][tipo] = float(total or 0.0)
+
+    serie = []
+    for (y, m) in sorted(meses.keys()):
+        r = meses[(y, m)]["Receita"]
+        d = meses[(y, m)]["Despesa"]
+        serie.append({
+            "ano": y, "mes": m, "label": f"{m:02d}/{y}",
+            "renda": round(r, 2), "despesa": round(d, 2), "saldo": round(r - d, 2),
+            "atual": (y == agora.year and m == agora.month),
+        })
+
+    # Média sobre meses completos (exclui o mês atual, que ainda está rolando)
+    completos = [s for s in serie if not s["atual"]]
+    n = len(completos) or 1
+    media = {
+        "renda": round(sum(s["renda"] for s in completos) / n, 2),
+        "despesa": round(sum(s["despesa"] for s in completos) / n, 2),
+        "saldo": round(sum(s["saldo"] for s in completos) / n, 2),
+        "n": len(completos),
+    }
+
+    # Média mensal de despesa por categoria (meses completos)
+    completos_keys = {(s["ano"], s["mes"]) for s in completos}
+    cat_rows = db.query(
+        Lancamento.categoria,
+        extract("year", Lancamento.data),
+        extract("month", Lancamento.data),
+        func.sum(Lancamento.valor),
+    ).filter(Lancamento.tipo == "Despesa").group_by(
+        Lancamento.categoria,
+        extract("year", Lancamento.data),
+        extract("month", Lancamento.data),
+    ).all()
+    cat_tot = {}
+    for categoria, y, m, total in cat_rows:
+        if y is None or m is None or (int(y), int(m)) not in completos_keys:
+            continue
+        c = categoria or "Outros"
+        cat_tot[c] = cat_tot.get(c, 0.0) + float(total or 0.0)
+    categorias = []
+    for c, tot in cat_tot.items():
+        media_c = tot / n
+        categorias.append({
+            "categoria": c, "media": round(media_c, 2), "total": round(tot, 2),
+            "pct": round(media_c / media["despesa"] * 100, 1) if media["despesa"] else 0,
+        })
+    categorias.sort(key=lambda x: x["media"], reverse=True)
+    db.close()
+
+    return {"serie": serie, "media": media, "categorias": categorias}

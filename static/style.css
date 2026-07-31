@@ -217,6 +217,13 @@ select:focus,input:focus{outline:none;border-color:var(--gold-soft)}
 .co-bar{height:7px;background:var(--line2);border-radius:20px;overflow:hidden;margin-top:8px}
 .co-bar-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-soft));border-radius:20px}
 .co-bar-meta{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:5px}
+.ex-cats{display:flex;flex-direction:column;gap:14px}
+.ex-cat-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.ex-cat-nome{font-weight:500;font-size:14px}
+.ex-cat-val{font-weight:600;font-size:14px}
+.ex-cat-val small{color:var(--muted);font-weight:400;margin-left:4px}
+.ex-cat-bar{height:8px;background:var(--line2);border-radius:20px;overflow:hidden}
+.ex-cat-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-soft));border-radius:20px}
 .co-btns{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
 .co-movs{margin-top:12px;border-top:1px solid var(--line2);padding-top:8px}
 .co-mov{display:flex;align-items:center;gap:10px;padding:6px 2px;font-size:13px}
