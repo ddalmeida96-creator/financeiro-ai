@@ -145,8 +145,26 @@ def _seed_historico():
     db.close()
 
 
+def _reset_mvp():
+    # Zera lançamentos e lista de compras UMA vez para o início do teste do MVP.
+    # Trava por marcador: nunca repete, então dados reais de agosto ficam seguros.
+    marker = "reset_mvp_2026_08"
+    with engine.begin() as c:
+        c.execute(text("CREATE TABLE IF NOT EXISTS _flags (nome TEXT PRIMARY KEY)"))
+        if list(c.execute(text("SELECT 1 FROM _flags WHERE nome=:n"), {"n": marker})):
+            return
+    db = SessionLocal()
+    nl = db.query(Lancamento).delete()
+    nc = db.query(Compra).delete()
+    db.commit()
+    db.close()
+    with engine.begin() as c:
+        c.execute(text("INSERT INTO _flags (nome) VALUES (:n)"), {"n": marker})
+    print(f"[RESET_MVP] zerado: lancamentos={nl}, compras={nc}", flush=True)
+
+
 def init_db():
     Base.metadata.create_all(engine)
     _migrate()
     _seed_inflacao()
-    _seed_historico()
+    _reset_mvp()
