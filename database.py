@@ -21,7 +21,8 @@ class Lancamento(Base):
     categoria = Column(String)
     subcategoria = Column(String)
     valor = Column(Float)
-    fixa_id = Column(Integer)  # se veio de uma conta fixa, referência dela
+    fixa_id = Column(Integer)       # se veio de uma conta fixa, referência dela
+    parcela_grupo = Column(String)  # id do grupo quando é compra parcelada (Nx)
 
 
 class Fixa(Base):
@@ -106,6 +107,8 @@ def _migrate():
         cols = [r[1] for r in c.execute(text("PRAGMA table_info(lancamentos)"))]
         if "fixa_id" not in cols:
             c.execute(text("ALTER TABLE lancamentos ADD COLUMN fixa_id INTEGER"))
+        if "parcela_grupo" not in cols:
+            c.execute(text("ALTER TABLE lancamentos ADD COLUMN parcela_grupo VARCHAR"))
 
 
 def _seed_inflacao():

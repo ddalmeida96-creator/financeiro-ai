@@ -53,9 +53,11 @@ def overview():
     despesas = soma("Despesa")
     saldo = receitas - despesas
 
-    # Patrimônio acumulado (todo o histórico)
-    tot_rec = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Receita").scalar()
-    tot_desp = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Despesa").scalar()
+    # Patrimônio acumulado (histórico até hoje; parcelas futuras não contam ainda)
+    tot_rec = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(
+        Lancamento.tipo == "Receita", Lancamento.data <= agora).scalar()
+    tot_desp = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(
+        Lancamento.tipo == "Despesa", Lancamento.data <= agora).scalar()
     patrimonio = tot_rec - tot_desp
 
     # Por usuário (mês)
@@ -481,8 +483,11 @@ def fixa_desfazer(fid: int):
 
 # ---------- COFRINHO / INVESTIMENTOS / BENS / INFLAÇÃO ----------
 def _saldo_conta(db):
-    r = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Receita").scalar()
-    d = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Despesa").scalar()
+    agora = datetime.now()
+    r = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(
+        Lancamento.tipo == "Receita", Lancamento.data <= agora).scalar()
+    d = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(
+        Lancamento.tipo == "Despesa", Lancamento.data <= agora).scalar()
     return round(r - d, 2)
 
 
@@ -780,8 +785,12 @@ def expectativa():
         meses.setdefault(key, {"Receita": 0.0, "Despesa": 0.0})
         meses[key][tipo] = float(total or 0.0)
 
+    atual_key = (agora.year, agora.month)
     serie = []
     for (y, m) in sorted(meses.keys()):
+        # ignora meses futuros (ex.: parcelas ainda por vir) — só até o mês atual
+        if (y, m) > atual_key:
+            continue
         r = meses[(y, m)]["Receita"]
         d = meses[(y, m)]["Despesa"]
         serie.append({
@@ -790,7 +799,7 @@ def expectativa():
             "atual": (y == agora.year and m == agora.month),
         })
 
-    # Média sobre meses completos (exclui o mês atual, que ainda está rolando)
+    # Média sobre meses já fechados (exclui o mês atual, que ainda está rolando)
     completos = [s for s in serie if not s["atual"]]
     n = len(completos) or 1
     media = {

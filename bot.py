@@ -38,6 +38,15 @@ async def _transcrever(audio_bytes, filename="audio.ogg"):
         return None, f"❌ Falha ao transcrever o áudio: {e}"
 
 
+def _add_meses(dt, k):
+    """dt + k meses, mantendo o dia (limitado ao fim do mês)."""
+    m = dt.month - 1 + k
+    y = dt.year + m // 12
+    m = m % 12 + 1
+    dia = min(dt.day, calendar.monthrange(y, m)[1])
+    return dt.replace(year=y, month=m, day=dia)
+
+
 async def _salvar_lancamento(update: Update, texto: str):
     r = parse(texto)
     if not r:
@@ -45,6 +54,36 @@ async def _salvar_lancamento(update: Update, texto: str):
             f'❌ Não entendi "{texto}". Envie algo como: Pizza 89')
         return
     usuario = update.effective_user.first_name or str(update.effective_user.id)
+    n = int(r.get("parcelas") or 1)
+
+    # Compra parcelada: uma parcela por mês, ligadas por um grupo.
+    if n > 1:
+        base = datetime.now()
+        grupo = f"p{int(base.timestamp())}"
+        db = SessionLocal()
+        ids = []
+        for k in range(n):
+            lanc = Lancamento(
+                usuario=usuario, tipo=r["tipo"],
+                descricao=f'{r["descricao"]} ({k + 1}/{n})',
+                categoria=r["categoria"], subcategoria=r["subcategoria"],
+                valor=r["valor"], data=_add_meses(base, k), parcela_grupo=grupo,
+            )
+            db.add(lanc)
+            db.commit()
+            ids.append(lanc.id)
+        db.close()
+        total = round(r["valor"] * n, 2)
+        await update.message.reply_text(
+            "✅ Compra parcelada registrada\n"
+            f"Descrição: {r['descricao']}\n"
+            f"Categoria: {r['categoria']}\n"
+            f"{n}x de {_brl(r['valor'])}  (total {_brl(total)})\n"
+            f"1ª em {base.strftime('%m/%Y')}, última em {_add_meses(base, n - 1).strftime('%m/%Y')}\n"
+            f"Nºs: {ids[0]}–{ids[-1]}  (apagar tudo: /apagar {ids[0]})"
+        )
+        return
+
     db = SessionLocal()
     lanc = Lancamento(
         usuario=usuario, tipo=r["tipo"], descricao=r["descricao"],
@@ -235,6 +274,18 @@ async def apagar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"#{lid} não encontrado.")
         return
     desc = l.descricao
+    grupo = l.parcela_grupo
+    if grupo:
+        # apaga a compra parcelada inteira
+        irmaos = db.query(Lancamento).filter(Lancamento.parcela_grupo == grupo).all()
+        n = len(irmaos)
+        base = re.sub(r"\s*\(\d+/\d+\)\s*$", "", desc)
+        for x in irmaos:
+            db.delete(x)
+        db.commit()
+        db.close()
+        await update.message.reply_text(f"🗑️ Compra parcelada '{base}' apagada ({n} parcelas).")
+        return
     db.delete(l)
     db.commit()
     db.close()
@@ -308,8 +359,11 @@ async def cofrinho(update: Update, context: ContextTypes.DEFAULT_TYPE):
         linhas.append(f"#{c.id} {c.emoji or ''} {c.nome} — {_brl(saldo)}  (/aportar {c.id} <valor>)")
     if not cofres:
         linhas.append("_Nenhum cofrinho cadastrado._")
-    rec = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Receita").scalar()
-    desp = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(Lancamento.tipo == "Despesa").scalar()
+    agora = datetime.now()
+    rec = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(
+        Lancamento.tipo == "Receita", Lancamento.data <= agora).scalar()
+    desp = db.query(func.coalesce(func.sum(Lancamento.valor), 0.0)).filter(
+        Lancamento.tipo == "Despesa", Lancamento.data <= agora).scalar()
     bens = db.query(func.coalesce(func.sum(Bem.valor), 0.0)).filter(Bem.ativo == True).scalar()
     db.close()
     conta = rec - desp

@@ -17,6 +17,16 @@ Ele responde com o resumo (tipo, categoria, valor) e o **número** do lançament
 
 Manda uma mensagem de voz falando o gasto, tipo "pizza oitenta e nove" ou "mercado duzentos e quarenta". O bot transcreve, mostra o que entendeu e lança direto — igual ao texto. Se transcrever errado, é só usar `/apagar`.
 
+## Compra parcelada 💳
+
+Coloque o número de vezes com **`Nx`** ou **`N vezes`** que o bot cria uma parcela por mês (uma agora, as outras nos próximos meses).
+
+- `Tênis Juliana em 5x de 370` → 5 parcelas de R$370 (total R$1.850). O **370 é o valor de cada parcela**.
+- `Notebook 2000 5x` → sem o "de", o **2000 é o total** → 5x de R$400.
+- `Sofá em 12 vezes de 300` → funciona por extenso também (bom pra áudio).
+
+Cada mês mostra só a parcela daquele mês — igual à fatura do cartão. As parcelas futuras **não** entram no saldo/patrimônio de hoje; entram quando o mês chega. Pra cancelar a compra inteira, use `/apagar` no número da 1ª parcela (apaga todas de uma vez).
+
 ## Lista de compras 🛒
 
 Comece a mensagem (texto **ou** áudio) com **"lista de compras"** e o bot põe os itens na lista em vez de lançar como gasto.
